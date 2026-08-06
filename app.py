@@ -71,26 +71,90 @@ FALLBACK_PRICE_BY_PROJECT: Dict[str, float] = {}
 # ---------------------------
 PREMIUM_CSS = """
 <style>
-h1, h2, h3 { letter-spacing: -0.02em; }
-h1 { margin-bottom: -40px !important; }
-.block-container { padding-top: 2rem; padding-bottom: 3rem; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap');
+
+:root {
+  --bg-0: #05070d;
+  --bg-1: #0a0e18;
+  --bg-2: #10151f;
+  --surface: rgba(255,255,255,0.035);
+  --surface-hover: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.08);
+  --border-soft: rgba(255,255,255,0.055);
+  --text-primary: #f4f6fb;
+  --text-muted: rgba(226,232,240,0.62);
+  --accent: #6366f1;
+  --accent-2: #8b5cf6;
+  --green: #34d399;
+  --red: #f87171;
+  --blue: #60a5fa;
+  --yellow: #fbbf24;
+  --radius-lg: 20px;
+  --radius-md: 16px;
+  --radius-sm: 10px;
+}
+
+html, body, [class*="css"] {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+.stApp {
+  background:
+    radial-gradient(1100px 550px at 12% -8%, rgba(99,102,241,0.16), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(139,92,246,0.10), transparent 55%),
+    linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 45%, var(--bg-2) 100%);
+  color: var(--text-primary);
+}
+
+h1, h2, h3 { letter-spacing: -0.03em; font-weight: 800 !important; }
+h1 {
+  margin-bottom: -40px !important;
+  background: linear-gradient(90deg, #ffffff 0%, #c7d2fe 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+h3 { font-weight: 700 !important; }
+
+.block-container {
+    padding-top: 1.6rem !important;
+    padding-bottom: 3rem;
+    max-width: 1400px;
+}
 
 button[title*="Copy link"], button[aria-label*="Copy link"] {
   display: none !important;
 }
 
+/* Sidebar */
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, rgba(15,18,28,0.98) 0%, rgba(10,13,21,0.98) 100%);
+  border-right: 1px solid var(--border-soft);
+}
+section[data-testid="stSidebar"] .stSelectbox,
+section[data-testid="stSidebar"] .stToggle {
+  margin-bottom: 4px;
+}
+
+/* Metric cards (native streamlit, kept in case of future use) */
 div[data-testid="stMetric"] {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
-  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: 14px 14px 10px 14px;
+  transition: all 0.2s ease;
+}
+div[data-testid="stMetric"]:hover {
+  background: var(--surface-hover);
+  border-color: rgba(255,255,255,0.12);
 }
 div[data-testid="stMetric"] > div { gap: 6px; }
 
+/* DataFrame */
 div[data-testid="stDataFrame"] {
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
 }
 
 .block-container {
@@ -99,8 +163,8 @@ div[data-testid="stDataFrame"] {
 
 .hr {
   height: 1px;
-  background: rgba(255,255,255,0.08);
-  margin: 18px 0 18px 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
+  margin: 22px 0 22px 0;
 }
 
 .muted { opacity: 0.75; }
@@ -112,28 +176,89 @@ h1 a[href^="#"], h2 a[href^="#"], h3 a[href^="#"] {
   display: none !important;
 }
 
+/* Tabs */
+button[data-baseweb="tab"] {
+  font-weight: 600 !important;
+  font-size: 15px !important;
+  border-radius: 10px 10px 0 0 !important;
+}
+div[data-baseweb="tab-list"] {
+  gap: 6px;
+  border-bottom: 1px solid var(--border-soft);
+}
+div[data-baseweb="tab-highlight"] {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)) !important;
+  height: 3px !important;
+  border-radius: 999px !important;
+}
+
+/* Buttons */
+.stButton > button {
+  border-radius: 12px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+.stButton > button:hover {
+  border-color: rgba(99,102,241,0.5) !important;
+  background: rgba(99,102,241,0.12) !important;
+  color: #ffffff !important;
+}
+
 /* HTML tables */
 table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.93rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   overflow: hidden;
+  font-variant-numeric: tabular-nums;
 }
 thead tr {
-  background: rgba(255,255,255,0.04);
+  background: linear-gradient(180deg, rgba(99,102,241,0.14), rgba(255,255,255,0.02));
 }
 thead th {
   text-align: left !important;
-  font-weight: 700;
+  font-weight: 700 !important;
+  font-size: 0.78rem !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(226,232,240,0.75) !important;
+  padding: 12px 14px !important;
+  border-bottom: 1px solid var(--border) !important;
 }
 tbody td {
   text-align: left !important;
+  padding: 11px 14px !important;
+  border-bottom: 1px solid rgba(255,255,255,0.045) !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.86rem;
+}
+tbody tr:last-child td {
+  border-bottom: none !important;
+}
+tbody tr {
+  transition: background 0.15s ease;
 }
 tbody tr:hover {
-  background: rgba(255,255,255,0.02);
+  background: rgba(99,102,241,0.06);
 }
+tbody td:first-child {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.14);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 </style>
 """
 
@@ -186,9 +311,9 @@ def pct(x: Optional[float]) -> str:
 def tx_badge_html(tx_type: str) -> str:
     tx_type = str(tx_type).upper().strip()
     if tx_type == "BUY":
-        return '<span style="color:#22c55e;font-weight:700;">BUY</span>'
+        return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:rgba(52,211,153,0.14);color:#34d399;font-weight:700;font-size:0.78rem;letter-spacing:0.03em;">BUY</span>'
     if tx_type == "SELL":
-        return '<span style="color:#ef4444;font-weight:700;">SELL</span>'
+        return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:rgba(248,113,113,0.14);color:#f87171;font-weight:700;font-size:0.78rem;letter-spacing:0.03em;">SELL</span>'
     return tx_type
 
 
@@ -196,7 +321,7 @@ def pnl_html(x: Optional[float]) -> str:
     if not is_number(x):
         return "—"
     value = float(x)
-    color = "#22c55e" if value > 0 else "#ef4444" if value < 0 else "#e5e7eb"
+    color = "#34d399" if value > 0 else "#f87171" if value < 0 else "#e5e7eb"
     return f'<span style="color:{color};font-weight:700;">{money(value)}</span>'
 
 
@@ -204,7 +329,7 @@ def pnl_color_html(x: Optional[float]) -> str:
     if not is_number(x):
         return "—"
     value = float(x)
-    color = "#22c55e" if value > 0 else "#ef4444" if value < 0 else "#e5e7eb"
+    color = "#34d399" if value > 0 else "#f87171" if value < 0 else "#e5e7eb"
     return f'<span style="color:{color};font-weight:600;">{money(value)}</span>'
 
 
@@ -212,7 +337,7 @@ def pct_color_html(x: Optional[float]) -> str:
     if not is_number(x):
         return "—"
     value = float(x)
-    color = "#22c55e" if value > 0 else "#ef4444" if value < 0 else "#e5e7eb"
+    color = "#34d399" if value > 0 else "#f87171" if value < 0 else "#e5e7eb"
     return f'<span style="color:{color};font-weight:600;">{value:,.2f}%</span>'
 
 
@@ -822,7 +947,7 @@ pnl_total_real = realized_pnl_total + profit_open_positions_real
 crypto_current_value = float(np.nansum(positions_live["value_live"].to_numpy())) if not positions_live.empty else 0.0
 total_current_value = cash_total + crypto_current_value
 
-pnl_color = "#22c55e" if pnl_total_real > 0 else "#ef4444" if pnl_total_real < 0 else "#e5e7eb"
+pnl_color = "#34d399" if pnl_total_real > 0 else "#f87171" if pnl_total_real < 0 else "#e5e7eb"
 
 portfolio_mode = get_portfolio_mode(cash_total, total_current_value)
 portfolio_mode_emoji = str(portfolio_mode["emoji"])
@@ -840,6 +965,7 @@ cards = [
         "label": "Profit net total actuel → si on vendait tout now",
         "value": money(pnl_total_real),
         "value_color": pnl_color,
+        "accent": "linear-gradient(135deg, rgba(99,102,241,0.16), rgba(139,92,246,0.05))",
         "detail_html": f"""
             <div style="
                 font-size: 10px;
@@ -863,12 +989,14 @@ cards = [
         "label": "Valeur crypto → positions en cours",
         "value": money_rounded(crypto_current_value),
         "value_color": "#e5e7eb",
+        "accent": "linear-gradient(135deg, rgba(96,165,250,0.14), rgba(96,165,250,0.03))",
         "detail_html": "",
     },
     {
         "label": "Cash disponible → rakbank + stablecoins",
         "value": money_rounded(cash_total),
         "value_color": "#e5e7eb",
+        "accent": "linear-gradient(135deg, rgba(52,211,153,0.14), rgba(52,211,153,0.03))",
         "detail_html": """
             <div style="
                 font-size: 10px;
@@ -888,33 +1016,39 @@ for col, card in zip(cols, cards):
         st.markdown(
             f"""
             <div style="
-                background: rgba(255,255,255,0.03);
-                border: 1px solid rgba(255,255,255,0.06);
-                border-radius: 14px;
-                padding: 18px 16px 16px 16px;
-                min-height: 130px;
+                position: relative;
+                background: {card['accent']}, rgba(255,255,255,0.025);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 20px;
+                padding: 20px 18px 18px 18px;
+                min-height: 132px;
                 display: flex;
                 flex-direction: column;
                 justify-content: flex-start;
                 box-sizing: border-box;
+                box-shadow: 0 8px 24px -12px rgba(0,0,0,0.5);
+                backdrop-filter: blur(6px);
             ">
                 <div style="
-                    font-size: 14px;
-                    line-height: 1.2;
+                    font-size: 13px;
+                    line-height: 1.3;
                     opacity: 0.85;
-                    margin-bottom: 10px;
-                    color: #e5e7eb;
-                    font-weight: 500;
+                    margin-bottom: 12px;
+                    color: #cbd5e1;
+                    font-weight: 600;
+                    letter-spacing: 0.01em;
                 ">
                     {card["label"]}
                 </div>
                 <div style="
                     font-size: 32px;
                     line-height: 1.15;
-                    font-weight: 700;
+                    font-weight: 800;
+                    letter-spacing: -0.02em;
                     color: {card["value_color"]};
                     margin: 0;
                     padding: 0;
+                    font-variant-numeric: tabular-nums;
                 ">
                     {card["value"]}
                 </div>
@@ -927,28 +1061,30 @@ for col, card in zip(cols, cards):
 st.markdown(
     f"""
 <div style="
-margin-top:14px;
-margin-bottom:12px;
-background:rgba(255,255,255,0.03);
-border:1px solid rgba(255,255,255,0.06);
-border-radius:14px;
-padding:12px 18px 12px 18px;
+margin-top:16px;
+margin-bottom:14px;
+background: linear-gradient(135deg, rgba(99,102,241,0.10), rgba(255,255,255,0.02));
+border:1px solid rgba(255,255,255,0.08);
+border-radius:20px;
+padding:16px 20px 16px 20px;
 box-sizing:border-box;
+box-shadow: 0 8px 24px -12px rgba(0,0,0,0.5);
 ">
 
 <div style="
 font-size:13px;
 color:rgba(229,231,235,0.72);
 margin-bottom:8px;
-font-weight:500;
+font-weight:600;
 ">
 Total actuel → cash + positions en cours
 </div>
 
 <div style="
-font-size:28px;
+font-size:30px;
 line-height:1.1;
-font-weight:700;
+font-weight:800;
+letter-spacing:-0.02em;
 color:#ffffff;
 ">
 {money_rounded(total_current_value)}
@@ -961,11 +1097,11 @@ height:10px;
 "></div>
 
 <div
- title="60% et plus de cash → Mode défensif&#10;35% à 59.9% de cash → Mode équilibré&#10;moins de 35% de cash → Mode agressif"
- style="
+title="60% et plus de cash → Mode défensif&#10;35% à 59.9% de cash → Mode équilibré&#10;moins de 35% de cash → Mode agressif"
+style="
 display:flex;
 align-items:center;
-gap:7px;
+gap:8px;
 font-size:15px;
 line-height:1.35;
 font-weight:700;
@@ -978,7 +1114,7 @@ cursor:help;
 </div>
 
 <div style="
-margin-top:3px;
+margin-top:4px;
 font-size:12px;
 line-height:1.35;
 color:rgba(229,231,235,0.72);
@@ -1154,9 +1290,9 @@ with tab_sales:
         speed_html = ""
 
     st.markdown(
-        f'<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:14px; padding:14px 16px 12px 16px; margin-bottom:18px; max-width:420px;">'
-        f'<div style="font-size:14px; opacity:0.85; margin-bottom:6px;">Profits réalisés cumulés</div>'
-        f'<div style="font-size:24px; font-weight:700;">{pnl_realized_html}</div>'
+        f'<div style="background: linear-gradient(135deg, rgba(99,102,241,0.10), rgba(255,255,255,0.02)); border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:18px 20px 16px 20px; margin-bottom:20px; max-width:440px; box-shadow: 0 8px 24px -12px rgba(0,0,0,0.5);">'
+        f'<div style="font-size:13px; opacity:0.85; margin-bottom:8px; font-weight:600; color:#cbd5e1;">Profits réalisés cumulés</div>'
+        f'<div style="font-size:26px; font-weight:800; letter-spacing:-0.02em;">{pnl_realized_html}</div>'
         f'{speed_html}'
         f'</div>',
         unsafe_allow_html=True,
@@ -1211,8 +1347,10 @@ with tab_sales:
                 x=sales_curve["date_chart"],
                 y=sales_curve["profit_cumule"],
                 mode="lines+markers",
-                line=dict(color="#22c55e", width=3),
-                marker=dict(size=8, color="#22c55e"),
+                line=dict(color="#34d399", width=3),
+                marker=dict(size=8, color="#34d399"),
+                fill="tozeroy",
+                fillcolor="rgba(52,211,153,0.08)",
                 customdata=sales_curve[["Token", "Cycle", "Vente", "Profit cumulé"]],
                 hovertemplate=(
                     "<b>%{customdata[0]}</b> %{customdata[1]}<br>"
@@ -1229,7 +1367,7 @@ with tab_sales:
             x=[last_row["date_chart"]],
             y=[last_row["profit_cumule"]],
             mode="markers",
-            marker=dict(size=14, color="#22c55e", line=dict(width=2, color="white")),
+            marker=dict(size=14, color="#34d399", line=dict(width=2, color="white")),
             hoverinfo="skip",
             showlegend=False
         )
@@ -1242,7 +1380,7 @@ with tab_sales:
             showlegend=False,
             xaxis_title="Date",
             yaxis_title="Profit réalisé cumulé ($)",
-            font=dict(color="#e5e7eb"),
+            font=dict(color="#e5e7eb", family="Inter, sans-serif"),
             hoverlabel=dict(
                 bgcolor="#111827",
                 bordercolor="rgba(255,255,255,0.12)",
@@ -1320,7 +1458,7 @@ with tab_sales:
                 ">
                     <div style="font-size:13px; font-weight:700; color:#e5e7eb;">{token}</div>
                     <div style="height:8px; background:rgba(255,255,255,0.08); border-radius:999px; overflow:hidden;">
-                        <div style="height:8px; width:{pct_val:.2f}%; background:#22c55e; border-radius:999px;"></div>
+                        <div style="height:8px; width:{pct_val:.2f}%; background:linear-gradient(90deg, #34d399, #6366f1); border-radius:999px;"></div>
                     </div>
                     <div style="font-size:13px; font-weight:700; color:#e5e7eb; text-align:right;">{pct_val:.0f}%</div>
                 </div>
@@ -1331,17 +1469,18 @@ with tab_sales:
                 <div style="
                     margin-top: 2px;
                     margin-bottom: 22px;
-                    padding: 12px 14px;
+                    padding: 16px 18px;
                     background: rgba(255,255,255,0.025);
-                    border: 1px solid rgba(255,255,255,0.06);
-                    border-radius: 14px;
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 18px;
                     max-width: 700px;
+                    box-shadow: 0 8px 24px -12px rgba(0,0,0,0.5);
                 ">
                     <div style="
                         font-size: 13px;
                         font-weight: 700;
                         color: rgba(229,231,235,0.82);
-                        margin-bottom: 8px;
+                        margin-bottom: 10px;
                     ">
                         Contribution aux profits réalisés
                     </div>
