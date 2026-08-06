@@ -1,0 +1,61 @@
+date,project,type,quantity,unit_price_usd,fees_usd,note
+2026-07-20,PRL,BUY,18028,0.2773,0,premier buy dca prl
+2026-07-10,NOCK,BUY,353639,0.019389,0,dca nock pour baisser prix entree
+2026-07-10,NOCK,BUY,487297,0.0191874,0,dca nock pour baisser prix entree
+2026-07-08,NOCK,BUY,131089,0.01912,0,dca nock pour baisser prix entree
+2026-07-02,NOCK,BUY,201878,0.02493,0,dca nock pour baisser prix entree
+2026-07-02,NOCK,BUY,203914,0.02469,0,dca nock pour baisser prix entree
+2026-06-30,NOCK,BUY,224857,0.022236,0,dca nock pour baisser prix entree
+2026-06-30,NOCK,BUY,231050,0.02164,0,dca nock pour baisser prix entree
+2026-06-05,NOCK,BUY,531003.126,0.0327,0,vente pour dca nock
+2026-06-05,TIG,SELL,8170,1.0475,0,vente pour dca nock
+2026-06-05,RAIL,SELL,4130.752,2.1354,0,vente pour dca nock
+2026-05-31,RAIL,BUY,4130.752,2.4857,0,achat DCA cycle 3
+2026-06-01,TIG,SELL,8256.491997548148179969,1.2578,0,vente de la moitié pour safe et buy du rail
+2026-05-31,NOCK,BUY,238781,0.0494218,0,achat DCA cycle 3
+2026-05-29,NOCK,BUY,260345,0.043254,0,achat DCA cycle 3
+2026-05-29,NOCK,BUY,604033,0.043044,0,achat DCA cycle 3
+2026-05-26,NOCK,SELL,2488729,0.03803949726,0, tout vendu fin du cycle 2
+2026-05-23,NOCK,BUY,127938,0.02344,0,achat DCA cycle 2
+2026-05-23,NOCK,BUY,576162,0.02350,0,achat DCA cycle 2
+2026-05-23,TSG,SELL,251680000,0.000002,0,fail on prends la perte
+2026-05-20,COP,SELL,587814127,0.00000508664,0,vente total chart bof
+2026-05-20,TSG,BUY,251680000,0.00001311,0,split avec cop pour doubler la chance
+2026-05-20,COP,SELL,587813000,0.00000578755,0,vente de la moitié pour safe un peu
+2026-05-19,NOCK,SELL,500000,0.026424,0,vente DCA cycle 2
+2026-05-16,COP,BUY,1175627127,0.00000518872,0,petit achat tenter un gros coup genre x5/x10
+2026-05-16,NOCK,BUY,97306,0.01645,0,achat DCA cycle 2
+2026-05-16,NOCK,BUY,127187,0.01658,0,achat DCA cycle 2
+2026-05-16,NOCK,BUY,260828,0.01725,0,achat DCA cycle 2
+2026-05-16,NOCK,BUY,279788,0.01802,0,achat DCA cycle 2
+2026-05-15,NOCK,BUY,247651,0.02019,0,achat DCA cycle 2
+2026-05-14,NOCK,BUY,1271869,0.01904,0,achat DCA cycle 2
+2026-05-11,TIG,BUY,16426.863,1.1335,0,buy pour tenter un move 2x idealement
+2026-05-05,NOCK,SELL,1737448,0.021423,0,vente total des nock
+2026-05-05,OCT,SELL,1746797,0.040744,0,vente total des octra
+2026-04-30,NOCK,SELL,450000,0.02344,0,prise de profit DCA
+2026-04-30,NOCK,SELL,546772,0.023020635,0,prise de profit DCA
+2026-04-30,NOCK,SELL,546772,0.022762,0,prise de profit DCA
+2026-04-30,NOCK,SELL,546772,0.022857,0,prise de profit DCA
+2026-04-30,NOCK,SELL,546772,0.02277,0,prise de profit DCA
+2026-04-22,OCT,BUY,480134,0.02203,0,buy avec les profits pour baisser prix moyen
+2026-04-21,OCT,SELL,170000,0.06023,0,prise de profit DCA
+2026-04-20,OCT,BUY,1436663,0.0272,0,buy via l'enchère à 27M fdv
+2026-04-09,NOCK,BUY,1099969,0.007136,0,dernier achat DCA
+2026-04-09,NOCK,BUY,623158,0.006598,0,dernier achat DCA
+2026-04-09,FAI,SELL,1047686,0.003904,0,switch pour nock DCA final
+2026-04-06,FAI,BUY,1047686,0.004096,0,achat pour tenter un autre move
+2026-04-06,QRL,SELL,2894.34,1.49,0,tout vendu la hype n'a pas pris
+2026-03-31,QRL,BUY,2894.34,1.7266,0,achat suite au paper google
+2026-03-19,TAO,SELL,165.93,257.813536,0,vente totale des TAO
+2026-02-27,TAO,BUY,87.09,183.0,0,achat DCA
+2026-02-24,NOCK,BUY,152238.0,0.00657,0,achat DCA
+2026-02-24,NOCK,BUY,202937.0,0.00721,0,achat DCA
+2026-02-24,NOCK,BUY,135895.0,0.00736,0,achat DCA
+2026-02-24,NOCK,BUY,131538.0,0.00756,0,achat DCA
+2026-02-23,TAO,BUY,78.84,172.0,0,achat DCA
+2026-02-23,NOCK,BUY,544587.0,0.009,0,achat DCA
+2026-02-03,NOCK,BUY,458799.0,0.0108,0,achat DCA
+2026-01-26,NOCK,BUY,639325.0,0.0188,0,achat DCA
+2026-01-14,NOCK,BUY,332090.0,0.0323,0,achat DCA
+2026-01-01,NOCK,BUY,54000.0,0.062,0,achat DCA
