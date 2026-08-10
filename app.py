@@ -1527,45 +1527,93 @@ with tab_portefeuille:
             else:
                 pie_df = pie_df.sort_values("value_live", ascending=False)
                 total_value = float(pie_df["value_live"].sum())
-                BAR_WIDTH = 22
-                alloc_rows = []
+
+                # Palette restreinte terminal, cohérente entre le donut et les
+                # barres ASCII : bleu pour le cash, dégradés de vert/rouge selon
+                # le signe du gain pour la crypto (au lieu du rainbow par token).
+                blue_shades = ["#4dc9ff", "#2f8fc7", "#1c6690"]
+                green_shades = ["#39ff8f", "#2bd97a", "#1f6b45", "#17502f"]
+                red_shades = ["#ff4d4d", "#d93a3a", "#a32d2d", "#791f1f"]
+                gray_shades = ["#5a6f62", "#3f4f46"]
+                counters = {"blue": 0, "green": 0, "red": 0, "gray": 0}
+                repartition_color_map: Dict[str, str] = {}
                 for _, row in pie_df.iterrows():
                     proj = str(row["project"])
-                    val = float(row["value_live"])
-                    pct = (val / total_value * 100) if total_value else 0.0
-                    filled = max(0, min(BAR_WIDTH, int(round(pct / 100 * BAR_WIDTH))))
-                    bar = "█" * filled + "░" * (BAR_WIDTH - filled)
-
                     if proj in cash_assets:
-                        bar_color = "#4dc9ff"
-                        val_display = money_rounded(val)
+                        shades, key = blue_shades, "blue"
                     else:
                         gain_val = row.get("gain_position_en_cours_$")
                         if pd.notna(gain_val) and float(gain_val) < 0:
-                            bar_color = "#ff4d4d"
+                            shades, key = red_shades, "red"
                         elif pd.notna(gain_val) and float(gain_val) > 0:
-                            bar_color = "#39ff8f"
+                            shades, key = green_shades, "green"
                         else:
-                            bar_color = "#5a6f62"
-                        val_display = money(val)
+                            shades, key = gray_shades, "gray"
+                    repartition_color_map[proj] = shades[counters[key] % len(shades)]
+                    counters[key] += 1
 
-                    alloc_rows.append(
-                        '<div style="display:flex; align-items:center; gap:10px; padding:4px 0; '
-                        'font-family:\'JetBrains Mono\', monospace; font-size:0.78rem;">'
-                        f'<span style="width:76px; color:var(--text-primary); flex-shrink:0; overflow:hidden; '
-                        f'text-overflow:ellipsis; white-space:nowrap;">{proj}</span>'
-                        f'<span style="color:{bar_color}; letter-spacing:-1px; flex-shrink:0;">{bar}</span>'
-                        f'<span style="width:46px; text-align:right; color:var(--text-muted); flex-shrink:0;">{pct:4.1f}%</span>'
-                        f'<span style="flex:1; text-align:right; color:var(--text-muted);">{val_display}</span>'
-                        '</div>'
+                donut_col, ascii_col = st.columns(2, gap="small")
+
+                with donut_col:
+                    fig = px.pie(
+                        pie_df,
+                        names="project",
+                        values="value_live",
+                        hole=0.55,
+                        color="project",
+                        color_discrete_map=repartition_color_map,
                     )
+                    fig.update_traces(
+                        textposition="inside",
+                        textinfo="percent",
+                        textfont=dict(family="JetBrains Mono, monospace", size=10, color="#050805"),
+                    )
+                    fig.update_layout(
+                        margin=dict(l=0, r=0, t=10, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        showlegend=False,
+                        font=dict(color="#e8e8e8", family="JetBrains Mono, monospace"),
+                        hoverlabel=dict(bgcolor="#050805", bordercolor="#1a2e22", font_size=13),
+                        annotations=[
+                            dict(
+                                text=money_rounded(total_value),
+                                x=0.5, y=0.5,
+                                font=dict(size=13, color="#e8e8e8", family="JetBrains Mono, monospace"),
+                                showarrow=False,
+                            )
+                        ],
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
 
-                st.markdown(
-                    '<div style="border:1px solid var(--border); border-radius:0; padding:14px 16px;">'
-                    + "".join(alloc_rows)
-                    + "</div>",
-                    unsafe_allow_html=True,
-                )
+                with ascii_col:
+                    BAR_WIDTH = 12
+                    alloc_rows = []
+                    for _, row in pie_df.iterrows():
+                        proj = str(row["project"])
+                        val = float(row["value_live"])
+                        pct = (val / total_value * 100) if total_value else 0.0
+                        filled = max(0, min(BAR_WIDTH, int(round(pct / 100 * BAR_WIDTH))))
+                        bar = "█" * filled + "░" * (BAR_WIDTH - filled)
+                        bar_color = repartition_color_map.get(proj, "#5a6f62")
+                        val_display = money_rounded(val) if proj in cash_assets else money(val)
+
+                        alloc_rows.append(
+                            '<div style="display:flex; align-items:center; gap:6px; padding:3px 0; '
+                            'font-family:\'JetBrains Mono\', monospace; font-size:0.68rem;">'
+                            f'<span style="width:52px; color:var(--text-primary); flex-shrink:0; overflow:hidden; '
+                            f'text-overflow:ellipsis; white-space:nowrap;">{proj}</span>'
+                            f'<span style="color:{bar_color}; letter-spacing:-1px; flex-shrink:0;">{bar}</span>'
+                            f'<span style="width:34px; text-align:right; color:var(--text-muted); flex-shrink:0;">{pct:4.1f}%</span>'
+                            '</div>'
+                        )
+
+                    st.markdown(
+                        '<div style="border:1px solid var(--border); border-radius:0; padding:10px 12px; height:100%;">'
+                        + "".join(alloc_rows)
+                        + "</div>",
+                        unsafe_allow_html=True,
+                    )
 
         with col2:
             st.subheader("📉 Gain sur position restante (en cours)")
