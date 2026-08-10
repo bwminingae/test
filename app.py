@@ -1414,22 +1414,49 @@ with tab_portefeuille:
         st.subheader("🧾 Journal complet")
 
         tx_show = transactions.copy().sort_values("date", ascending=False)
-        tx_show["Date"] = tx_show["date"].dt.strftime("%Y-%m-%d")
-        tx_show["Type"] = tx_show["type"].map(tx_badge_html)
-        tx_show["Quantité"] = tx_show["quantity"].map(qty_tokens)
-        tx_show["Prix unitaire"] = tx_show["unit_price_usd"].map(price)
-        tx_show["Montant brut"] = (tx_show["quantity"] * tx_show["unit_price_usd"]).map(money)
 
-        tx_html = tx_show[[
-            "Date", "project", "Type", "Quantité", "Prix unitaire", "Montant brut", "note"
-        ]].rename(columns={
-            "project": "Token",
-            "note": "Note",
+        filt_col1, filt_col2 = st.columns(2)
+        with filt_col1:
+            token_filter = st.multiselect(
+                "Filtrer par token",
+                options=sorted(tx_show["project"].unique().tolist()),
+                default=[],
+                key="journal_token_filter",
+            )
+        with filt_col2:
+            type_filter = st.multiselect(
+                "Filtrer par type",
+                options=["BUY", "SELL"],
+                default=[],
+                key="journal_type_filter",
+            )
+
+        tx_filtered = tx_show.copy()
+        if token_filter:
+            tx_filtered = tx_filtered[tx_filtered["project"].isin(token_filter)]
+        if type_filter:
+            tx_filtered = tx_filtered[tx_filtered["type"].isin(type_filter)]
+
+        tx_display = pd.DataFrame({
+            "Date": tx_filtered["date"],
+            "Token": tx_filtered["project"],
+            "Type": tx_filtered["type"].map(lambda t: "🟢 BUY" if t == "BUY" else "🔴 SELL"),
+            "Quantité": tx_filtered["quantity"],
+            "Prix unitaire": tx_filtered["unit_price_usd"],
+            "Montant brut": tx_filtered["quantity"] * tx_filtered["unit_price_usd"],
+            "Note": tx_filtered["note"],
         })
 
-        st.markdown(
-            make_tiles(tx_html, title_col="Token", subtitle_col="Date", badge_col="Type"),
-            unsafe_allow_html=True,
+        st.dataframe(
+            tx_display,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
+                "Quantité": st.column_config.NumberColumn("Quantité", format="%.4f"),
+                "Prix unitaire": st.column_config.NumberColumn("Prix unitaire", format="$%.6f"),
+                "Montant brut": st.column_config.NumberColumn("Montant brut", format="$%.2f"),
+            },
         )
 
 
