@@ -1390,20 +1390,56 @@ with tab_portefeuille:
             bar_df = bar_df.dropna(subset=["gain_position_en_cours_$"])
 
             if not bar_df.empty:
-                fig2 = px.bar(
-                    bar_df,
-                    x="project",
-                    y="gain_position_en_cours_$",
-                    color="project",
-                    color_discrete_map=color_map,
-                )
-                fig2.update_layout(
-                    margin=dict(l=10, r=10, t=10, b=10),
-                    showlegend=False,
-                    xaxis_title="Token",
-                    yaxis_title="Gain sur position restante (en cours) ($)",
-                )
-                st.plotly_chart(fig2, use_container_width=True)
+                # Isole les valeurs extrêmes qui écraseraient visuellement les autres.
+                # Un token est considéré "extrême" s'il dépasse largement l'échelle du
+                # reste du portefeuille (comparé à la médiane des valeurs absolues).
+                # On garde au moins 2 tokens "normaux" pour que le graphique du bas
+                # conserve un sens ; sinon on n'isole rien.
+                abs_vals = bar_df["gain_position_en_cours_$"].abs()
+                median_abs = abs_vals.median()
+                threshold = median_abs * 6 if median_abs > 0 else 0
+                is_outlier = abs_vals > threshold if threshold > 0 else pd.Series(False, index=bar_df.index)
+
+                if is_outlier.any() and (len(bar_df) - int(is_outlier.sum())) >= 2:
+                    outliers_df = bar_df[is_outlier].sort_values("gain_position_en_cours_$")
+                    normal_df = bar_df[~is_outlier]
+                else:
+                    outliers_df = bar_df.iloc[0:0]
+                    normal_df = bar_df
+
+                for _, row in outliers_df.iterrows():
+                    val = float(row["gain_position_en_cours_$"])
+                    bg = "rgba(248,113,113,0.14)" if val < 0 else "rgba(52,211,153,0.14)"
+                    fg = "#f87171" if val < 0 else "#34d399"
+                    st.markdown(
+                        f'<div style="display:flex; align-items:center; justify-content:space-between; '
+                        f'background:{bg}; border-radius:10px; padding:8px 12px; margin-bottom:8px;">'
+                        f'<span style="font-size:0.82rem; font-weight:700; color:{fg};">{row["project"]}</span>'
+                        f'<span style="font-size:0.9rem; font-weight:700; color:{fg};">{money(val)}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                if not outliers_df.empty:
+                    st.caption("Les autres, à l'échelle")
+
+                if not normal_df.empty:
+                    fig2 = px.bar(
+                        normal_df,
+                        x="project",
+                        y="gain_position_en_cours_$",
+                        color="project",
+                        color_discrete_map=color_map,
+                    )
+                    fig2.update_layout(
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        showlegend=False,
+                        xaxis_title="Token",
+                        yaxis_title="Gain sur position restante (en cours) ($)",
+                    )
+                    st.plotly_chart(fig2, use_container_width=True)
+                elif outliers_df.empty:
+                    st.info("Gain sur position restante indisponible.")
             else:
                 st.info("Gain sur position restante indisponible.")
 
