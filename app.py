@@ -255,81 +255,79 @@ tbody td:first-child {
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
-/* Scrollable wrapper so wide tables scroll on their own, without shifting the whole page */
-.table-wrap {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  border-radius: var(--radius-md);
+/* Tiles — one layout for every screen size. The grid auto-fits as many
+   columns as the available width allows (desktop: several per row,
+   mobile: a single column) so there is never a horizontal scrollbar. */
+.tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
   margin-bottom: 4px;
 }
-.table-wrap table {
-  border-radius: 0;
-}
-.table-wrap thead th,
-.table-wrap tbody td {
-  white-space: nowrap;
-}
-
-/* Mobile card view (hidden on desktop, shown only under the mobile breakpoint) */
-.mobile-cards {
-  display: none;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 4px;
-}
-.mobile-card {
+.tile {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
+  padding: 14px 16px;
 }
-.mobile-card-head {
+.tile-head {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-soft);
 }
-.mobile-card-title {
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--text-primary);
-}
-.mobile-card-subtitle {
-  font-size: 0.76rem;
-  color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
-  white-space: nowrap;
-}
-.mobile-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px 12px;
-}
-.mobile-card-field {
+.tile-title-wrap {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
-.mobile-card-label {
-  font-size: 0.66rem;
+.tile-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+.tile-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+.tile-badge {
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px 12px;
+}
+.tile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tile-label {
+  font-size: 0.64rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
-.mobile-card-value {
-  font-size: 0.86rem;
+.tile-value {
+  font-size: 0.84rem;
   font-family: 'JetBrains Mono', monospace;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   word-break: break-word;
 }
 
-/* Mobile tweaks */
+/* Mobile tweaks (unrelated to tables — tiles already adapt on their own) */
 @media (max-width: 768px) {
   .block-container {
     padding-left: 0.8rem !important;
@@ -338,17 +336,8 @@ tbody td:first-child {
   }
   h1 { font-size: 1.5rem !important; margin-bottom: 0 !important; }
   h2, h3 { font-size: 1.15rem !important; }
-  table { font-size: 0.82rem; }
-  thead th { padding: 9px 10px !important; }
-  tbody td { padding: 8px 10px !important; }
   div[data-testid="stMetric"] {
     padding: 10px 10px 8px 10px;
-  }
-  .desktop-table {
-    display: none;
-  }
-  .mobile-cards {
-    display: flex;
   }
 }
 </style>
@@ -485,51 +474,50 @@ def get_portfolio_mode(cash_total: float, total_current_value: float) -> Dict[st
     }
 
 
-def make_html_table(df: pd.DataFrame) -> str:
-    return f'<div class="table-wrap desktop-table">{df.to_html(escape=False, index=False)}</div>'
-
-
-def make_responsive_table(
+def make_tiles(
     df: pd.DataFrame,
     title_col: str,
     subtitle_col: Optional[str] = None,
+    badge_col: Optional[str] = None,
     label_overrides: Optional[Dict[str, str]] = None,
 ) -> str:
-    """Rend le tableau desktop (inchangé) + une vue en cartes pour mobile.
-
-    Les deux versions existent toujours dans le DOM ; seule une media query CSS
-    (voir .desktop-table / .mobile-cards) décide laquelle s'affiche selon la
-    largeur d'écran. Pas de JS, pas de détection d'appareil.
+    """Rend un DataFrame comme une grille de tuiles — une seule mise en page,
+    identique sur ordinateur et mobile. La grille CSS (.tiles-grid) range
+    automatiquement plus ou moins de tuiles par ligne selon la largeur
+    d'écran disponible : jamais de scroll horizontal, pas de media query,
+    pas de détection d'appareil.
     """
     label_overrides = label_overrides or {}
-    table_html = make_html_table(df)
+    excluded = {c for c in (title_col, subtitle_col, badge_col) if c}
+    field_cols = [c for c in df.columns if c not in excluded]
 
-    field_cols = [c for c in df.columns if c not in (title_col, subtitle_col)]
-
-    card_parts = []
+    tiles = []
     for _, row in df.iterrows():
         subtitle_html = (
-            f'<div class="mobile-card-subtitle">{row[subtitle_col]}</div>' if subtitle_col else ""
+            f'<div class="tile-subtitle">{row[subtitle_col]}</div>' if subtitle_col else ""
         )
+        badge_html = f'<div class="tile-badge">{row[badge_col]}</div>' if badge_col else ""
         fields_html = "".join(
-            f'<div class="mobile-card-field">'
-            f'<span class="mobile-card-label">{label_overrides.get(c, c)}</span>'
-            f'<span class="mobile-card-value">{row[c]}</span>'
+            f'<div class="tile-field">'
+            f'<span class="tile-label">{label_overrides.get(c, c)}</span>'
+            f'<span class="tile-value">{row[c]}</span>'
             f'</div>'
             for c in field_cols
         )
-        card_parts.append(
-            f'<div class="mobile-card">'
-            f'<div class="mobile-card-head">'
-            f'<div class="mobile-card-title">{row[title_col]}</div>'
+        tiles.append(
+            f'<div class="tile">'
+            f'<div class="tile-head">'
+            f'<div class="tile-title-wrap">'
+            f'<div class="tile-title">{row[title_col]}</div>'
             f'{subtitle_html}'
             f'</div>'
-            f'<div class="mobile-card-grid">{fields_html}</div>'
+            f'{badge_html}'
+            f'</div>'
+            f'<div class="tile-grid">{fields_html}</div>'
             f'</div>'
         )
 
-    cards_html = f'<div class="mobile-cards">{"".join(card_parts)}</div>'
-    return table_html + cards_html
+    return f'<div class="tiles-grid">{"".join(tiles)}</div>' 
 
 
 # ---------------------------
@@ -1364,7 +1352,12 @@ with tab_portefeuille:
             "ROI global du trade": "ROI global",
         }
         st.markdown(
-            make_responsive_table(positions_html, title_col="Projet", label_overrides=positions_labels),
+            make_tiles(
+                positions_html,
+                title_col="Projet",
+                badge_col="ROI global du trade",
+                label_overrides=positions_labels,
+            ),
             unsafe_allow_html=True,
         )
 
@@ -1435,7 +1428,7 @@ with tab_portefeuille:
         })
 
         st.markdown(
-            make_responsive_table(tx_html, title_col="Token", subtitle_col="Date"),
+            make_tiles(tx_html, title_col="Token", subtitle_col="Date", badge_col="Type"),
             unsafe_allow_html=True,
         )
 
@@ -1713,7 +1706,12 @@ with tab_sales:
             "ROI sur ventes": "ROI",
         }
         st.markdown(
-            make_responsive_table(summary_token_html, title_col="Token", label_overrides=summary_token_labels),
+            make_tiles(
+                summary_token_html,
+                title_col="Token",
+                badge_col="ROI sur ventes",
+                label_overrides=summary_token_labels,
+            ),
             unsafe_allow_html=True,
         )
 
@@ -1771,8 +1769,12 @@ Un cycle = un trade complet sur un token.
             "ROI sur ventes": "ROI",
         }
         st.markdown(
-            make_responsive_table(
-                summary_cycle_html, title_col="Token", subtitle_col="Cycle", label_overrides=summary_cycle_labels
+            make_tiles(
+                summary_cycle_html,
+                title_col="Token",
+                subtitle_col="Cycle",
+                badge_col="ROI sur ventes",
+                label_overrides=summary_cycle_labels,
             ),
             unsafe_allow_html=True,
         )
@@ -1822,6 +1824,12 @@ Un cycle = un trade complet sur un token.
             "ROI sur ventes": "ROI",
         }
         st.markdown(
-            make_responsive_table(sales_html, title_col="Token", subtitle_col="Date", label_overrides=sales_labels),
+            make_tiles(
+                sales_html,
+                title_col="Token",
+                subtitle_col="Date",
+                badge_col="ROI sur ventes",
+                label_overrides=sales_labels,
+            ),
             unsafe_allow_html=True,
         )
