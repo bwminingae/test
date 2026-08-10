@@ -271,6 +271,64 @@ tbody td:first-child {
   white-space: nowrap;
 }
 
+/* Mobile card view (hidden on desktop, shown only under the mobile breakpoint) */
+.mobile-cards {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.mobile-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+.mobile-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.mobile-card-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+.mobile-card-subtitle {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+.mobile-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px 12px;
+}
+.mobile-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mobile-card-label {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.mobile-card-value {
+  font-size: 0.86rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
 /* Mobile tweaks */
 @media (max-width: 768px) {
   .block-container {
@@ -285,6 +343,12 @@ tbody td:first-child {
   tbody td { padding: 8px 10px !important; }
   div[data-testid="stMetric"] {
     padding: 10px 10px 8px 10px;
+  }
+  .desktop-table {
+    display: none;
+  }
+  .mobile-cards {
+    display: flex;
   }
 }
 </style>
@@ -422,7 +486,50 @@ def get_portfolio_mode(cash_total: float, total_current_value: float) -> Dict[st
 
 
 def make_html_table(df: pd.DataFrame) -> str:
-    return f'<div class="table-wrap">{df.to_html(escape=False, index=False)}</div>' 
+    return f'<div class="table-wrap desktop-table">{df.to_html(escape=False, index=False)}</div>'
+
+
+def make_responsive_table(
+    df: pd.DataFrame,
+    title_col: str,
+    subtitle_col: Optional[str] = None,
+    label_overrides: Optional[Dict[str, str]] = None,
+) -> str:
+    """Rend le tableau desktop (inchangé) + une vue en cartes pour mobile.
+
+    Les deux versions existent toujours dans le DOM ; seule une media query CSS
+    (voir .desktop-table / .mobile-cards) décide laquelle s'affiche selon la
+    largeur d'écran. Pas de JS, pas de détection d'appareil.
+    """
+    label_overrides = label_overrides or {}
+    table_html = make_html_table(df)
+
+    field_cols = [c for c in df.columns if c not in (title_col, subtitle_col)]
+
+    card_parts = []
+    for _, row in df.iterrows():
+        subtitle_html = (
+            f'<div class="mobile-card-subtitle">{row[subtitle_col]}</div>' if subtitle_col else ""
+        )
+        fields_html = "".join(
+            f'<div class="mobile-card-field">'
+            f'<span class="mobile-card-label">{label_overrides.get(c, c)}</span>'
+            f'<span class="mobile-card-value">{row[c]}</span>'
+            f'</div>'
+            for c in field_cols
+        )
+        card_parts.append(
+            f'<div class="mobile-card">'
+            f'<div class="mobile-card-head">'
+            f'<div class="mobile-card-title">{row[title_col]}</div>'
+            f'{subtitle_html}'
+            f'</div>'
+            f'<div class="mobile-card-grid">{fields_html}</div>'
+            f'</div>'
+        )
+
+    cards_html = f'<div class="mobile-cards">{"".join(card_parts)}</div>'
+    return table_html + cards_html
 
 
 # ---------------------------
@@ -1248,7 +1355,18 @@ with tab_portefeuille:
         ]
 
         positions_html = df_show[cols].rename(columns={"project": "Projet"})
-        st.markdown(make_html_table(positions_html), unsafe_allow_html=True)
+        positions_labels = {
+            "Prix achat moyen": "Prix achat",
+            "Montant total investi": "Investi",
+            "Valeur actuelle restante": "Valeur",
+            "Gain sur position restante (en cours)": "Gain (en cours)",
+            "Profit global du trade (si vente now)": "Profit global",
+            "ROI global du trade": "ROI global",
+        }
+        st.markdown(
+            make_responsive_table(positions_html, title_col="Projet", label_overrides=positions_labels),
+            unsafe_allow_html=True,
+        )
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
         st.markdown('<div style="height: -5px;"></div>', unsafe_allow_html=True)
@@ -1316,7 +1434,10 @@ with tab_portefeuille:
             "note": "Note",
         })
 
-        st.markdown(make_html_table(tx_html), unsafe_allow_html=True)
+        st.markdown(
+            make_responsive_table(tx_html, title_col="Token", subtitle_col="Date"),
+            unsafe_allow_html=True,
+        )
 
 
 # ---------------------------
@@ -1585,7 +1706,16 @@ with tab_sales:
             "ROI sur ventes",
         ]].rename(columns={"project": "Token"})
 
-        st.markdown(make_html_table(summary_token_html), unsafe_allow_html=True)
+        summary_token_labels = {
+            "Quantité vendue": "Quantité",
+            "Argent récupéré": "Récupéré",
+            "Mise vendue": "Mise",
+            "ROI sur ventes": "ROI",
+        }
+        st.markdown(
+            make_responsive_table(summary_token_html, title_col="Token", label_overrides=summary_token_labels),
+            unsafe_allow_html=True,
+        )
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
@@ -1634,7 +1764,18 @@ Un cycle = un trade complet sur un token.
             "ROI sur ventes",
         ]].rename(columns={"project": "Token"})
 
-        st.markdown(make_html_table(summary_cycle_html), unsafe_allow_html=True)
+        summary_cycle_labels = {
+            "Quantité vendue": "Quantité",
+            "Argent récupéré": "Récupéré",
+            "Mise vendue": "Mise",
+            "ROI sur ventes": "ROI",
+        }
+        st.markdown(
+            make_responsive_table(
+                summary_cycle_html, title_col="Token", subtitle_col="Cycle", label_overrides=summary_cycle_labels
+            ),
+            unsafe_allow_html=True,
+        )
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
@@ -1673,4 +1814,14 @@ Un cycle = un trade complet sur un token.
             "note": "Note",
         })
 
-        st.markdown(make_html_table(sales_html), unsafe_allow_html=True)
+        sales_labels = {
+            "Quantité vendue": "Quantité",
+            "Prix de vente": "Prix vente",
+            "Argent récupéré": "Récupéré",
+            "Mise vendue": "Mise",
+            "ROI sur ventes": "ROI",
+        }
+        st.markdown(
+            make_responsive_table(sales_html, title_col="Token", subtitle_col="Date", label_overrides=sales_labels),
+            unsafe_allow_html=True,
+        )
