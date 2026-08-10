@@ -474,25 +474,52 @@ def get_portfolio_mode(cash_total: float, total_current_value: float) -> Dict[st
     }
 
 
+def split_significant_positions(
+    df: pd.DataFrame, value_col: str, multiplier: float = 6.0
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Sépare les lignes dont l'impact $ domine largement les autres (comparé à
+    la médiane des valeurs absolues de value_col) de celles dont le montant est
+    négligeable. Utilisé pour que le graphique et les callouts ne soient pas
+    faussés par un token à quelques dollars, même si son évolution en % est
+    spectaculaire. Retourne (significatives, négligeables).
+    """
+    if df.empty:
+        return df, df
+
+    abs_vals = df[value_col].abs()
+    median_abs = abs_vals.median()
+    threshold = median_abs * multiplier if median_abs > 0 else 0
+    is_significant = abs_vals > threshold if threshold > 0 else pd.Series(True, index=df.index)
+
+    if is_significant.any() and (len(df) - int(is_significant.sum())) >= 1:
+        return df[is_significant], df[~is_significant]
+    return df, df.iloc[0:0]
+
+
 def make_tiles(
     df: pd.DataFrame,
     title_col: str,
     subtitle_col: Optional[str] = None,
     badge_col: Optional[str] = None,
     label_overrides: Optional[Dict[str, str]] = None,
+    accent_values: Optional[pd.Series] = None,
 ) -> str:
     """Rend un DataFrame comme une grille de tuiles — une seule mise en page,
     identique sur ordinateur et mobile. La grille CSS (.tiles-grid) range
     automatiquement plus ou moins de tuiles par ligne selon la largeur
     d'écran disponible : jamais de scroll horizontal, pas de media query,
     pas de détection d'appareil.
+
+    accent_values : série numérique alignée sur l'index de df (valeurs brutes,
+    pas du HTML formaté) qui détermine le liseré de couleur à gauche de
+    chaque tuile — vert si positif, rouge si négatif, neutre sinon.
     """
     label_overrides = label_overrides or {}
     excluded = {c for c in (title_col, subtitle_col, badge_col) if c}
     field_cols = [c for c in df.columns if c not in excluded]
 
     tiles = []
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
         subtitle_html = (
             f'<div class="tile-subtitle">{row[subtitle_col]}</div>' if subtitle_col else ""
         )
@@ -504,8 +531,19 @@ def make_tiles(
             f'</div>'
             for c in field_cols
         )
+
+        accent_style = ""
+        if accent_values is not None and idx in accent_values.index:
+            v = accent_values.loc[idx]
+            if is_number(v):
+                v = float(v)
+                if v > 0:
+                    accent_style = ' style="border-left:3px solid #34d399;"'
+                elif v < 0:
+                    accent_style = ' style="border-left:3px solid #f87171;"'
+
         tiles.append(
-            f'<div class="tile">'
+            f'<div class="tile"{accent_style}>'
             f'<div class="tile-head">'
             f'<div class="tile-title-wrap">'
             f'<div class="tile-title">{row[title_col]}</div>'
@@ -1275,6 +1313,17 @@ font-weight:500;
 {portfolio_mode_description}
 </div>
 
+<div style="margin-top:12px;">
+<div style="display:flex; height:8px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,0.06);">
+<div style="width:{cash_ratio_display}%; background:{portfolio_mode_color};"></div>
+<div style="width:{positions_ratio_display}%; background:rgba(255,255,255,0.18);"></div>
+</div>
+<div style="display:flex; justify-content:space-between; margin-top:5px; font-size:10.5px; color:rgba(229,231,235,0.65);">
+<span>Cash {cash_ratio_display}%</span>
+<span>Positions {positions_ratio_display}%</span>
+</div>
+</div>
+
 </div>
 """,
     unsafe_allow_html=True,
@@ -1299,21 +1348,67 @@ color_map["RAKBANK"] = "#60a5fa"
 with tab_portefeuille:
     st.subheader("📌 Positions")
 
+    def _perf_callout_html(row: pd.Series, is_best: bool) -> str:
+        val_pct = float(row["gain_position_en_cours_%"])
+        val_usd = float(row["gain_position_en_cours_$"])
+        color = "#34d399" if val_pct >= 0 else "#f87171"
+        bg = "rgba(52,211,153,0.12)" if val_pct >= 0 else "rgba(248,113,113,0.12)"
+        label = "Meilleure performance" if is_best else "Pire performance"
+        icon = "🏆" if is_best else "⚠️"
+        return (
+            f'<div style="display:flex; align-items:center; justify-content:space-between; '
+            f'background:{bg}; border-radius:12px; padding:10px 14px; margin-bottom:10px;">'
+            f'<span style="font-size:0.8rem; color:{color};">{icon} {label} — {row["project"]}</span>'
+            f'<span style="font-size:0.9rem; font-weight:700; color:{color};">{val_pct:+.2f}% ({money(val_usd)})</span>'
+            f'</div>'
+        )
+
+    # Meilleure / pire performance, en excluant les positions à montant négligeable
+    # (même logique que le graphique plus bas) pour qu'un token à quelques dollars
+    # ne fausse pas le classement même si son évolution en % est extrême.
+    perf_df = positions_live.dropna(subset=["gain_position_en_cours_$", "gain_position_en_cours_%"]).copy()
+    significant_perf_df, _ = split_significant_positions(perf_df, "gain_position_en_cours_$")
+    if not significant_perf_df.empty:
+        best_idx = significant_perf_df["gain_position_en_cours_%"].idxmax()
+        worst_idx = significant_perf_df["gain_position_en_cours_%"].idxmin()
+        best_row = significant_perf_df.loc[best_idx]
+
+        if best_idx == worst_idx:
+            st.markdown(_perf_callout_html(best_row, is_best=True), unsafe_allow_html=True)
+        else:
+            worst_row = significant_perf_df.loc[worst_idx]
+            perf_col1, perf_col2 = st.columns(2)
+            with perf_col1:
+                st.markdown(_perf_callout_html(best_row, is_best=True), unsafe_allow_html=True)
+            with perf_col2:
+                st.markdown(_perf_callout_html(worst_row, is_best=False), unsafe_allow_html=True)
+
     if positions_all.empty:
         st.info("Aucune position ouverte.")
     else:
         df_show = positions_all.copy()
 
-        # Tri demandé : du plus grand Montant total investi au plus petit.
-        # On garde une colonne numérique temporaire pour trier proprement,
-        # puis on l'affiche ensuite en format $.
         df_show["montant_total_investi_value"] = df_show.apply(
             lambda row: montant_investi_affichage(row, transactions),
             axis=1,
         )
+
+        sort_options = {
+            "Montant investi": ("montant_total_investi_value", False),
+            "Profit (plus haut d'abord)": ("gain_position_en_cours_$", False),
+            "Valeur actuelle": ("value_live", False),
+            "Alphabétique": ("project", True),
+        }
+        sort_choice = st.selectbox(
+            "Trier par",
+            options=list(sort_options.keys()),
+            index=0,
+            key="positions_sort",
+        )
+        sort_col, sort_ascending = sort_options[sort_choice]
         df_show = df_show.sort_values(
-            by="montant_total_investi_value",
-            ascending=False,
+            by=sort_col,
+            ascending=sort_ascending,
             na_position="last",
         ).reset_index(drop=True)
 
@@ -1327,7 +1422,13 @@ with tab_portefeuille:
         df_show["ROI global du trade"] = df_show["roi_global_trade_si_vente_now_%"].map(pct_color_html)
 
         is_cash_row = df_show["project"].isin(list(cash_assets))
-        df_show.loc[is_cash_row, ["Prix achat moyen", "Montant total investi", "Gain sur position restante (en cours)", "Profit global du trade (si vente now)", "ROI global du trade"]] = ["—", "—", "—", "—", "—"]
+        cash_badge_html = (
+            '<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
+            'background:rgba(148,163,184,0.14);color:#94a3b8;font-weight:700;'
+            'font-size:0.78rem;letter-spacing:0.03em;">CASH</span>'
+        )
+        df_show.loc[is_cash_row, ["Prix achat moyen", "Montant total investi", "Gain sur position restante (en cours)", "Profit global du trade (si vente now)"]] = ["—", "—", "—", "—"]
+        df_show.loc[is_cash_row, "ROI global du trade"] = cash_badge_html
         df_show.loc[is_cash_row, "Valeur actuelle restante"] = df_show.loc[is_cash_row, "value_live"].map(money_rounded)
 
         cols = [
@@ -1357,6 +1458,7 @@ with tab_portefeuille:
                 title_col="Projet",
                 badge_col="ROI global du trade",
                 label_overrides=positions_labels,
+                accent_values=df_show["gain_position_en_cours_$"],
             ),
             unsafe_allow_html=True,
         )
@@ -1394,19 +1496,8 @@ with tab_portefeuille:
                 # les positions dont le montant est négligeable (petites quantités,
                 # quelques dollars) passent en simple liste discrète, sans barre —
                 # ça ne sert à rien de leur donner de la place visuelle.
-                # Seuil basé sur la médiane des valeurs absolues, donc ça s'adapte
-                # tout seul si la composition du portefeuille change.
-                abs_vals = bar_df["gain_position_en_cours_$"].abs()
-                median_abs = abs_vals.median()
-                threshold = median_abs * 6 if median_abs > 0 else 0
-                is_significant = abs_vals > threshold if threshold > 0 else pd.Series(True, index=bar_df.index)
-
-                if is_significant.any() and (len(bar_df) - int(is_significant.sum())) >= 1:
-                    significant_df = bar_df[is_significant].sort_values("gain_position_en_cours_$")
-                    small_df = bar_df[~is_significant]
-                else:
-                    significant_df = bar_df
-                    small_df = bar_df.iloc[0:0]
+                significant_df, small_df = split_significant_positions(bar_df, "gain_position_en_cours_$")
+                significant_df = significant_df.sort_values("gain_position_en_cours_$")
 
                 if not significant_df.empty:
                     fig2 = px.bar(
@@ -1778,6 +1869,7 @@ with tab_sales:
                 title_col="Token",
                 badge_col="ROI sur ventes",
                 label_overrides=summary_token_labels,
+                accent_values=summary_token["realized_pnl"],
             ),
             unsafe_allow_html=True,
         )
@@ -1842,6 +1934,7 @@ Un cycle = un trade complet sur un token.
                 subtitle_col="Cycle",
                 badge_col="ROI sur ventes",
                 label_overrides=summary_cycle_labels,
+                accent_values=summary_cycle["realized_pnl"],
             ),
             unsafe_allow_html=True,
         )
@@ -1897,6 +1990,7 @@ Un cycle = un trade complet sur un token.
                 subtitle_col="Date",
                 badge_col="ROI sur ventes",
                 label_overrides=sales_labels,
+                accent_values=sales_show["realized_pnl"],
             ),
             unsafe_allow_html=True,
         )
