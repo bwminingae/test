@@ -1046,6 +1046,7 @@ with st.sidebar:
         st.info("NOCK/TAO/FAI/OCT/TIG/COP sont pricés en USD en priorité. En EUR, certains prix peuvent être indisponibles.")
     auto_refresh = st.toggle("Auto-refresh (60s)", value=True)
     manual_refresh = st.button("🔄 Rafraîchir maintenant")
+    st.caption(f"🕒 Actualisé à {time.strftime('%H:%M:%S')}")
     st.divider()
     show_transactions = st.toggle("Voir le journal complet", value=True)
     st.caption("Modifie data_transactions.csv et data_cash.csv")
@@ -1346,6 +1347,18 @@ color_map["RAKBANK"] = "#60a5fa"
 # TAB 1 — Portefeuille
 # ---------------------------
 with tab_portefeuille:
+    st.markdown(
+        '<div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">'
+        '<a href="#nav-positions" style="text-decoration:none; font-size:12px; color:var(--text-muted); '
+        'border:1px solid var(--border); border-radius:999px; padding:4px 12px;">📌 Positions</a>'
+        '<a href="#nav-repartition" style="text-decoration:none; font-size:12px; color:var(--text-muted); '
+        'border:1px solid var(--border); border-radius:999px; padding:4px 12px;">📊 Répartition</a>'
+        '<a href="#nav-journal" style="text-decoration:none; font-size:12px; color:var(--text-muted); '
+        'border:1px solid var(--border); border-radius:999px; padding:4px 12px;">🧾 Journal</a>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div id="nav-positions"></div>', unsafe_allow_html=True)
     st.subheader("📌 Positions")
 
     def _perf_callout_html(row: pd.Series, is_best: bool) -> str:
@@ -1443,7 +1456,6 @@ with tab_portefeuille:
             "ROI global du trade",
         ]
 
-        positions_html = df_show[cols].rename(columns={"project": "Projet"})
         positions_labels = {
             "Prix achat moyen": "Prix achat",
             "Montant total investi": "Investi",
@@ -1452,16 +1464,70 @@ with tab_portefeuille:
             "Profit global du trade (si vente now)": "Profit global",
             "ROI global du trade": "ROI global",
         }
-        st.markdown(
-            make_tiles(
-                positions_html,
-                title_col="Projet",
-                badge_col="ROI global du trade",
-                label_overrides=positions_labels,
-                accent_values=df_show["gain_position_en_cours_$"],
-            ),
-            unsafe_allow_html=True,
+
+        section_label_style = (
+            'font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; '
+            'color:var(--text-muted); font-weight:600;'
         )
+
+        crypto_show = df_show[~is_cash_row]
+        cash_show = df_show[is_cash_row]
+
+        # Les petites positions (montant $ négligeable) passent en liste discrète
+        # au lieu d'une tuile pleine — même logique que le graphique plus bas.
+        crypto_significant, crypto_small = split_significant_positions(crypto_show, "gain_position_en_cours_$")
+
+        if not crypto_significant.empty:
+            st.markdown(
+                f'<div style="{section_label_style} margin-bottom:8px;">Crypto</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                make_tiles(
+                    crypto_significant[cols].rename(columns={"project": "Projet"}),
+                    title_col="Projet",
+                    badge_col="ROI global du trade",
+                    label_overrides=positions_labels,
+                    accent_values=crypto_significant["gain_position_en_cours_$"],
+                ),
+                unsafe_allow_html=True,
+            )
+
+        if not crypto_small.empty:
+            small_sorted = crypto_small.sort_values("gain_position_en_cours_$", ascending=False)
+            chips = []
+            for _, row in small_sorted.iterrows():
+                val = float(row["gain_position_en_cours_$"])
+                fg = "#f87171" if val < 0 else "#34d399" if val > 0 else "#9ca3af"
+                chips.append(
+                    f'<span style="color:var(--text-muted);">{row["project"]} '
+                    f'<span style="color:{fg};">{money(val)}</span></span>'
+                )
+            st.markdown(
+                f'<div style="margin-top:6px; margin-bottom:16px; padding:10px 12px; '
+                f'background:var(--surface); border:1px solid var(--border-soft); border-radius:var(--radius-md);">'
+                f'<div style="font-size:0.64rem; text-transform:uppercase; letter-spacing:0.04em; '
+                f'color:var(--text-muted); margin-bottom:6px;">Petites positions (montants négligeables)</div>'
+                f'<div style="display:flex; flex-wrap:wrap; gap:6px 14px; font-size:0.78rem;">'
+                f'{"".join(chips)}'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        if not cash_show.empty:
+            st.markdown(
+                f'<div style="{section_label_style} margin:14px 0 8px 0;">Cash</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                make_tiles(
+                    cash_show[cols].rename(columns={"project": "Projet"}),
+                    title_col="Projet",
+                    badge_col="ROI global du trade",
+                    label_overrides=positions_labels,
+                ),
+                unsafe_allow_html=True,
+            )
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
         st.markdown('<div style="height: -5px;"></div>', unsafe_allow_html=True)
@@ -1469,6 +1535,7 @@ with tab_portefeuille:
         col1, col2 = st.columns(2, gap="large")
 
         with col1:
+            st.markdown('<div id="nav-repartition"></div>', unsafe_allow_html=True)
             st.subheader("📊 Répartition")
             pie_df = positions_all.dropna(subset=["value_live"]).copy()
             if pie_df.empty:
@@ -1542,6 +1609,7 @@ with tab_portefeuille:
 
     if show_transactions:
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+        st.markdown('<div id="nav-journal"></div>', unsafe_allow_html=True)
         st.subheader("🧾 Journal complet")
 
         tx_show = transactions.copy().sort_values("date", ascending=False)
@@ -1626,6 +1694,24 @@ with tab_sales:
         f'</div>',
         unsafe_allow_html=True,
     )
+
+    # Meilleur trade réalisé (cycle avec le plus gros profit encaissé)
+    if not sales_df.empty:
+        cycle_pnl = sales_df.groupby(["project", "cycle_id"], as_index=False)["realized_pnl"].sum()
+        best_cycle_idx = cycle_pnl["realized_pnl"].idxmax()
+        best_cycle = cycle_pnl.loc[best_cycle_idx]
+        if float(best_cycle["realized_pnl"]) > 0:
+            st.markdown(
+                f'<div style="display:flex; align-items:center; justify-content:space-between; '
+                f'background:rgba(52,211,153,0.12); border-radius:12px; padding:10px 14px; '
+                f'margin-bottom:20px; max-width:440px;">'
+                f'<span style="font-size:0.8rem; color:#34d399;">🏆 Meilleur trade — '
+                f'{best_cycle["project"]} #{int(best_cycle["cycle_id"])}</span>'
+                f'<span style="font-size:0.9rem; font-weight:700; color:#34d399;">'
+                f'{money(float(best_cycle["realized_pnl"]))}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     # ---------------------------
     # Graph — Profit réalisé cumulé
