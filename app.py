@@ -1525,17 +1525,47 @@ with tab_portefeuille:
             if pie_df.empty:
                 st.info("Pas de données de valorisation.")
             else:
-                fig = px.pie(
-                    pie_df,
-                    names="project",
-                    values="value_live",
-                    hole=0.45,
-                    color="project",
-                    color_discrete_map=color_map,
+                pie_df = pie_df.sort_values("value_live", ascending=False)
+                total_value = float(pie_df["value_live"].sum())
+                BAR_WIDTH = 22
+                alloc_rows = []
+                for _, row in pie_df.iterrows():
+                    proj = str(row["project"])
+                    val = float(row["value_live"])
+                    pct = (val / total_value * 100) if total_value else 0.0
+                    filled = max(0, min(BAR_WIDTH, int(round(pct / 100 * BAR_WIDTH))))
+                    bar = "█" * filled + "░" * (BAR_WIDTH - filled)
+
+                    if proj in cash_assets:
+                        bar_color = "#4dc9ff"
+                        val_display = money_rounded(val)
+                    else:
+                        gain_val = row.get("gain_position_en_cours_$")
+                        if pd.notna(gain_val) and float(gain_val) < 0:
+                            bar_color = "#ff4d4d"
+                        elif pd.notna(gain_val) and float(gain_val) > 0:
+                            bar_color = "#39ff8f"
+                        else:
+                            bar_color = "#5a6f62"
+                        val_display = money(val)
+
+                    alloc_rows.append(
+                        '<div style="display:flex; align-items:center; gap:10px; padding:4px 0; '
+                        'font-family:\'JetBrains Mono\', monospace; font-size:0.78rem;">'
+                        f'<span style="width:76px; color:var(--text-primary); flex-shrink:0; overflow:hidden; '
+                        f'text-overflow:ellipsis; white-space:nowrap;">{proj}</span>'
+                        f'<span style="color:{bar_color}; letter-spacing:-1px; flex-shrink:0;">{bar}</span>'
+                        f'<span style="width:46px; text-align:right; color:var(--text-muted); flex-shrink:0;">{pct:4.1f}%</span>'
+                        f'<span style="flex:1; text-align:right; color:var(--text-muted);">{val_display}</span>'
+                        '</div>'
+                    )
+
+                st.markdown(
+                    '<div style="border:1px solid var(--border); border-radius:0; padding:14px 16px;">'
+                    + "".join(alloc_rows)
+                    + "</div>",
+                    unsafe_allow_html=True,
                 )
-                fig.update_traces(textposition="inside", textinfo="percent+label")
-                fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
 
         with col2:
             st.subheader("📉 Gain sur position restante (en cours)")
@@ -1551,19 +1581,29 @@ with tab_portefeuille:
                 significant_df = significant_df.sort_values("gain_position_en_cours_$")
 
                 if not significant_df.empty:
+                    significant_df = significant_df.copy()
+                    significant_df["_sign"] = significant_df["gain_position_en_cours_$"].apply(
+                        lambda v: "Gain" if v >= 0 else "Perte"
+                    )
                     fig2 = px.bar(
                         significant_df,
                         x="project",
                         y="gain_position_en_cours_$",
-                        color="project",
-                        color_discrete_map=color_map,
+                        color="_sign",
+                        color_discrete_map={"Gain": "#39ff8f", "Perte": "#ff4d4d"},
                     )
                     fig2.update_layout(
                         margin=dict(l=10, r=10, t=10, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
                         showlegend=False,
                         xaxis_title="Token",
                         yaxis_title="Gain sur position restante (en cours) ($)",
+                        font=dict(color="#e8e8e8", family="JetBrains Mono, monospace"),
+                        hoverlabel=dict(bgcolor="#050805", bordercolor="#1a2e22", font_size=13),
                     )
+                    fig2.update_xaxes(gridcolor="rgba(57,255,143,0.08)", zerolinecolor="rgba(57,255,143,0.15)")
+                    fig2.update_yaxes(gridcolor="rgba(57,255,143,0.08)", zerolinecolor="rgba(57,255,143,0.2)")
                     st.plotly_chart(fig2, use_container_width=True)
 
                 if not small_df.empty:
