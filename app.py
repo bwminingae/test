@@ -1,5 +1,6 @@
 import time
 import math
+import html
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -16,6 +17,7 @@ from streamlit_autorefresh import st_autorefresh
 # ---------------------------
 TRANSACTIONS_FILE = "data_transactions.csv"
 CASH_FILE = "data_cash.csv"
+WATCHLIST_FILE = "watchlist.csv"
 
 DEFAULT_VS_CURRENCY = "usd"
 
@@ -73,6 +75,25 @@ DEXSCREENER_PAIR_BY_PROJECT = {
         "chain": "ethereum",
         "pair": "0x230ecd3c25b44af30db59c15f70df7794eb13f67a200f230b7400daa96fe804d",
     },
+    "PONS": {
+        "chain": "robinhood",
+        "pair": "0x10cc6bd38112cac182db90b6a71d8bb5939526ba",
+    },
+    "STONKBROKER": {
+        "chain": "robinhood",
+        "pair": "0xd33c8fd38b06e989cdbd4dffdefab71c4bdd415b24964c8d69e38ff35b068f92",
+    },
+    "PUMP": {
+        "chain": "solana",
+        "pair": "2uf4xh61rdwxng9woyxsvqp7zua6klfpb3nvnrqeoisd",
+    },
+}
+
+DEXSCREENER_URL_BY_PROJECT = {
+    "PONS": "https://dexscreener.com/robinhood/0x10cc6bd38112cac182db90b6a71d8bb5939526ba",
+    "STONKBROKER": "https://dexscreener.com/robinhood/0xd33c8fd38b06e989cdbd4dffdefab71c4bdd415b24964c8d69e38ff35b068f92",
+    "FWA": "https://dexscreener.com/ethereum/0x230ecd3c25b44af30db59c15f70df7794eb13f67a200f230b7400daa96fe804d",
+    "PUMP": "https://dexscreener.com/solana/2uf4xh61rdwxng9woyxsvqp7zua6klfpb3nvnrqeoisd",
 }
 
 FALLBACK_PRICE_BY_PROJECT: Dict[str, float] = {}
@@ -84,6 +105,7 @@ FALLBACK_PRICE_BY_PROJECT: Dict[str, float] = {}
 PREMIUM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 :root {
   --bg-0: #000000;
   --bg-1: #030503;
@@ -104,27 +126,33 @@ PREMIUM_CSS = """
   --radius-md: 0px;
   --radius-sm: 0px;
 }
+
 html, body, [class*="css"] {
   font-family: 'JetBrains Mono', 'Courier New', monospace !important;
 }
+
 .stApp {
   background: var(--bg-0);
   color: var(--text-primary);
 }
+
 h1, h2, h3 { letter-spacing: 0.04em; font-weight: 600 !important; }
 h1 {
   margin-bottom: -40px !important;
   color: var(--green);
 }
 h3 { font-weight: 600 !important; }
+
 .block-container {
     padding-top: 1.6rem !important;
     padding-bottom: 3rem;
     max-width: 1400px;
 }
+
 button[title*="Copy link"], button[aria-label*="Copy link"] {
   display: none !important;
 }
+
 /* Sidebar */
 section[data-testid="stSidebar"] {
   background: var(--bg-1);
@@ -134,6 +162,7 @@ section[data-testid="stSidebar"] .stSelectbox,
 section[data-testid="stSidebar"] .stToggle {
   margin-bottom: 4px;
 }
+
 /* Metric cards (native streamlit, kept in case of future use) */
 div[data-testid="stMetric"] {
   background: var(--surface);
@@ -147,27 +176,33 @@ div[data-testid="stMetric"]:hover {
   border-color: var(--green);
 }
 div[data-testid="stMetric"] > div { gap: 6px; }
+
 /* DataFrame */
 div[data-testid="stDataFrame"] {
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border);
 }
+
 .block-container {
     padding-top: 0.2rem !important;
 }
+
 .hr {
   height: 1px;
   background: var(--border);
   margin: 22px 0 22px 0;
 }
+
 .muted { opacity: 0.75; }
+
 a.stMarkdownAnchor,
 a[data-testid="stMarkdownAnchor"],
 .stMarkdown a[href^="#"],
 h1 a[href^="#"], h2 a[href^="#"], h3 a[href^="#"] {
   display: none !important;
 }
+
 /* Tabs */
 button[data-baseweb="tab"] {
   font-weight: 400 !important;
@@ -183,6 +218,11 @@ button[data-baseweb="tab"][aria-selected="true"] {
 div[data-baseweb="tab-list"] {
   gap: 6px;
   border-bottom: 1px solid var(--border);
+}
+/* Réduit réellement l'espace AU-DESSUS du composant Portfolio / Ventes réalisées.
+   On cible le conteneur Streamlit complet plutôt que la tab-list interne. */
+div[data-testid="stElementContainer"]:has(div[data-baseweb="tab-list"]) {
+  margin-top: -24px !important;
 }
 div[data-baseweb="tab-highlight"] {
   background: var(--green) !important;
@@ -204,6 +244,7 @@ div[data-baseweb="tab-highlight"] {
   background: rgba(57,255,143,0.08) !important;
   color: var(--green) !important;
 }
+
 /* HTML tables */
 table {
   width: 100%;
@@ -244,6 +285,7 @@ tbody td:first-child {
   font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
 }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -327,6 +369,104 @@ tbody td:first-child {
   word-break: break-word;
 }
 
+/* Watchlist — terminal / research desk */
+.watch-observation {
+  background: #050805;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--yellow);
+  padding: 14px 16px;
+  margin: 2px 0 18px 0;
+}
+.watch-observation-label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--yellow);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.watch-observation-text {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.watchlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 1px;
+  background: #000000;
+  margin-bottom: 18px;
+}
+.watch-card {
+  background: #000;
+  padding: 14px 16px 16px 16px;
+  min-width: 0;
+}
+.watch-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 9px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.watch-token {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.watch-price-label {
+  color: var(--text-muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: right;
+}
+.watch-price {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.watch-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+.watch-field-label {
+  color: var(--text-muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.watch-field-value {
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.watch-description {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+.watch-source {
+  display: inline-block;
+  margin-top: 11px;
+  color: var(--text-muted) !important;
+  font-size: 0.66rem;
+  text-decoration: none !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.watch-source:hover {
+  color: var(--green) !important;
+}
+
 /* Mobile tweaks (unrelated to tables — tiles already adapt on their own) */
 @media (max-width: 768px) {
   .block-container {
@@ -338,6 +478,46 @@ tbody td:first-child {
   h2, h3 { font-size: 1.15rem !important; }
   div[data-testid="stMetric"] {
     padding: 10px 10px 8px 10px;
+  }
+  /* Cards KPI du haut : compactes uniquement sur mobile.
+     Desktop conserve la hauteur fixe de 136px définie inline. */
+  .top-metric-card {
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 12px 16px !important;
+  }
+  .watchlist-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .watch-card {
+    padding: 12px 14px 14px 14px !important;
+  }
+  .watch-card-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+  .watch-description {
+    grid-column: 1 !important;
+  }
+  .watch-observation {
+    padding: 12px 14px !important;
+    margin-bottom: 12px !important;
+  }
+  /* Répartition : compacter uniquement sur mobile.
+     Le séparateur prend moins de marge et le bloc Plotly contenu dans
+     les colonnes de Répartition remonte / libère l'espace sous le donut. */
+  .repartition-hr {
+    margin-top: 8px !important;
+    margin-bottom: 4px !important;
+  }
+  div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) {
+    margin-top: -6px !important;
+    margin-bottom: -26px !important;
+  }
+  div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"])
+  div[data-testid="stPlotlyChart"] {
+    margin-top: -4px !important;
+    margin-bottom: -18px !important;
   }
 }
 </style>
@@ -485,12 +665,10 @@ def split_significant_positions(
     """
     if df.empty:
         return df, df
-
     abs_vals = df[value_col].abs()
     median_abs = abs_vals.median()
     threshold = median_abs * multiplier if median_abs > 0 else 0
     is_significant = abs_vals > threshold if threshold > 0 else pd.Series(True, index=df.index)
-
     if is_significant.any() and (len(df) - int(is_significant.sum())) >= 1:
         return df[is_significant], df[~is_significant]
     return df, df.iloc[0:0]
@@ -524,12 +702,16 @@ def make_tiles(
             f'<div class="tile-subtitle">{row[subtitle_col]}</div>' if subtitle_col else ""
         )
         badge_html = f'<div class="tile-badge">{row[badge_col]}</div>' if badge_col else ""
+
+        # Une valeur volontairement vide ("") masque tout le champ dans la tuile :
+        # ni le label, ni la valeur ne sont affichés.
         fields_html = "".join(
             f'<div class="tile-field">'
             f'<span class="tile-label">{label_overrides.get(c, c)}</span>'
             f'<span class="tile-value">{row[c]}</span>'
             f'</div>'
             for c in field_cols
+            if str(row[c]).strip() != ""
         )
 
         accent_style = ""
@@ -555,7 +737,7 @@ def make_tiles(
             f'</div>'
         )
 
-    return f'<div class="tiles-grid">{"".join(tiles)}</div>' 
+    return f'<div class="tiles-grid">{"".join(tiles)}</div>'
 
 
 # ---------------------------
@@ -597,7 +779,6 @@ def fetch_okx_price(inst_id: str) -> Optional[float]:
         "User-Agent": "Mozilla/5.0 (compatible; DashboardBW/1.0)",
         "Accept": "application/json",
     }
-
     try:
         r = requests.get(url, params={"instId": inst_id}, headers=headers, timeout=10)
         if r.status_code != 200:
@@ -675,6 +856,47 @@ def fetch_dexscreener_pair_price_usd(chain: str, pair: str) -> Optional[float]:
         return float(px_) if px_ is not None else None
     except Exception:
         return None
+
+
+def fetch_project_live_price(project: str, vs_currency: str) -> Optional[float]:
+    """Prix live d'un projet isolé, en réutilisant les mêmes mappings que Positions."""
+    p = str(project).upper().strip()
+    vs = str(vs_currency).lower().strip()
+    val: Optional[float] = None
+
+    if p in DEXSCREENER_PAIR_BY_PROJECT and vs == "usd":
+        cfg = DEXSCREENER_PAIR_BY_PROJECT[p]
+        val = fetch_dexscreener_pair_price_usd(cfg["chain"], cfg["pair"])
+
+    if val is None and p in BINANCE_SYMBOL_BY_PROJECT and vs == "usd":
+        val = fetch_binance_price(BINANCE_SYMBOL_BY_PROJECT[p])
+
+    if val is None and p in OKX_INST_ID_BY_PROJECT and vs == "usd":
+        val = fetch_okx_price(OKX_INST_ID_BY_PROJECT[p])
+
+    if val is None and p in SAFETRADE_MARKET_BY_PROJECT and vs == "usd":
+        val = fetch_safetrade_price(SAFETRADE_MARKET_BY_PROJECT[p])
+
+    if val is None:
+        coingecko_id = COINGECKO_ID_BY_PROJECT.get(p)
+        if coingecko_id:
+            prices_by_id, _, _ = fetch_coingecko_prices([coingecko_id], vs_currency)
+            val = prices_by_id.get(coingecko_id)
+
+    if val is None and p in FALLBACK_PRICE_BY_PROJECT:
+        val = FALLBACK_PRICE_BY_PROJECT[p]
+
+    if "last_prices" not in st.session_state:
+        st.session_state["last_prices"] = {}
+
+    if val is None and p in st.session_state["last_prices"]:
+        val = st.session_state["last_prices"][p]
+
+    if val is not None:
+        st.session_state["last_prices"][p] = float(val)
+        return float(val)
+
+    return None
 
 
 def attach_live_prices(pos: pd.DataFrame, vs_currency: str) -> Tuple[pd.DataFrame, str]:
@@ -779,6 +1001,37 @@ def load_cash(path: str) -> pd.DataFrame:
         return df
     except Exception:
         return pd.DataFrame(columns=["asset", "amount"])
+
+
+def load_watchlist(path: str) -> pd.DataFrame:
+    """Charge la watchlist éditable depuis GitHub.
+
+    Colonnes attendues :
+    token, target_achat, mise_potentielle, descriptif, observation_du_moment
+    L'observation peut être remplie sur une seule ligne : la première valeur
+    non vide est utilisée comme bandeau en haut de l'onglet.
+    """
+    columns = [
+        "token",
+        "target_achat",
+        "mise_potentielle",
+        "descriptif",
+        "observation_du_moment",
+    ]
+    try:
+        df = pd.read_csv(path, dtype=str).fillna("")
+    except Exception:
+        return pd.DataFrame(columns=columns)
+
+    for col in columns:
+        if col not in df.columns:
+            df[col] = ""
+
+    df["token"] = df["token"].astype(str).str.upper().str.strip()
+    for col in ["target_achat", "mise_potentielle", "descriptif", "observation_du_moment"]:
+        df[col] = df[col].astype(str).str.strip()
+
+    return df[df["token"] != ""][columns].reset_index(drop=True)
 
 
 # ---------------------------
@@ -988,7 +1241,6 @@ def build_portfolio_and_sales(transactions: pd.DataFrame) -> Tuple[pd.DataFrame,
     return positions, sales, warnings_list
 
 
-
 def montant_investi_affichage(row: pd.Series, transactions: pd.DataFrame) -> float:
     """Montant total investi affiché dans Positions.
 
@@ -1033,6 +1285,7 @@ def montant_investi_affichage(row: pd.Series, transactions: pd.DataFrame) -> flo
 
     return buy_total
 
+
 # ---------------------------
 # App
 # ---------------------------
@@ -1049,7 +1302,7 @@ with st.sidebar:
     st.caption(f"🕒 Actualisé à {time.strftime('%H:%M:%S')}")
     st.divider()
     show_transactions = st.toggle("Voir le journal complet", value=True)
-    st.caption("Modifie data_transactions.csv et data_cash.csv")
+    st.caption("Modifie data_transactions.csv, data_cash.csv et watchlist.csv")
 
 if auto_refresh:
     st_autorefresh(interval=60_000, key="autorefresh_60s")
@@ -1060,6 +1313,7 @@ if manual_refresh:
 
 transactions = load_transactions(TRANSACTIONS_FILE)
 cash_df = load_cash(CASH_FILE)
+watchlist_df = load_watchlist(WATCHLIST_FILE)
 
 positions_raw, sales_df, data_warnings = build_portfolio_and_sales(transactions)
 
@@ -1189,18 +1443,18 @@ cards = [
     },
 ]
 
-cols = st.columns(3)
+cols = st.columns(3, gap="small")
 
 for col, card in zip(cols, cards):
     with col:
         st.markdown(
             f"""
-            <div style="
+            <div class="top-metric-card" style="
                 background: #000000;
                 border: 1px solid #1a2e22;
                 border-radius: 0;
                 padding: 14px 16px;
-                min-height: 110px;
+                height: 136px;
                 display: flex;
                 flex-direction: column;
                 justify-content: flex-start;
@@ -1238,7 +1492,7 @@ for col, card in zip(cols, cards):
 st.markdown(
     f"""
 <div style="
-margin-top:1px;
+margin-top:10px;
 margin-bottom:16px;
 background: #050805;
 border:1px solid #1a2e22;
@@ -1246,7 +1500,6 @@ border-radius:0;
 padding:14px 16px;
 box-sizing:border-box;
 ">
-
 <div style="
 font-size:10.5px;
 color:#5a6f62;
@@ -1257,7 +1510,6 @@ text-transform:uppercase;
 ">
 Total actuel → cash + positions en cours
 </div>
-
 <div style="
 font-size:24px;
 line-height:1.1;
@@ -1267,9 +1519,7 @@ color:#e8e8e8;
 ">
 {money_rounded(total_current_value)}
 </div>
-
 <div style="height:10px;"></div>
-
 <div
  title="60% et plus de cash → Mode défensif&#10;35% à 59.9% de cash → Mode équilibré&#10;moins de 35% de cash → Mode agressif"
  style="
@@ -1288,7 +1538,6 @@ text-transform:uppercase;
 <span style="font-size:15px; line-height:1;">{portfolio_mode_emoji}</span>
 <span>{portfolio_mode_label}</span>
 </div>
-
 <div style="
 margin-top:3px;
 font-size:11px;
@@ -1298,7 +1547,6 @@ font-weight:400;
 ">
 {portfolio_mode_description}
 </div>
-
 <div style="margin-top:12px;">
 <div style="display:flex; height:4px; border-radius:0; overflow:hidden; background:#1a2e22;">
 <div style="width:{cash_ratio_display}%; background:{portfolio_mode_color};"></div>
@@ -1309,15 +1557,12 @@ font-weight:400;
 <span>POSITIONS {positions_ratio_display}%</span>
 </div>
 </div>
-
 </div>
 """,
     unsafe_allow_html=True,
 )
 
-st.markdown('<div style="height: -5px;"></div>', unsafe_allow_html=True)
-
-tab_portefeuille, tab_sales = st.tabs(["📊 Portefeuille", "✅ Ventes réalisées"])
+tab_portefeuille, tab_sales, tab_watchlist = st.tabs(["Portfolio", "Ventes réalisées", "Watchlist"])
 
 positions_all = positions_live.copy()
 if not cash_positions_df.empty:
@@ -1332,32 +1577,23 @@ color_map["RAKBANK"] = "#4dc9ff"
 # TAB 1 — Portefeuille
 # ---------------------------
 with tab_portefeuille:
-    st.markdown(
-        '<div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">'
-        '<a href="#nav-positions" style="text-decoration:none; font-size:12px; color:var(--text-muted); '
-        'border:1px solid var(--border); border-radius:0; padding:4px 12px;">📌 Positions</a>'
-        '<a href="#nav-repartition" style="text-decoration:none; font-size:12px; color:var(--text-muted); '
-        'border:1px solid var(--border); border-radius:0; padding:4px 12px;">📊 Répartition</a>'
-        '<a href="#nav-journal" style="text-decoration:none; font-size:12px; color:var(--text-muted); '
-        'border:1px solid var(--border); border-radius:0; padding:4px 12px;">🧾 Journal</a>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div id="nav-positions"></div>', unsafe_allow_html=True)
-    st.subheader("📌 Positions")
+    # Navigation interne supprimée : les liens étaient masqués par le CSS
+    # mais leur conteneur conservait de la hauteur, créant un grand espace
+    # entre les tabs Portfolio / Ventes réalisées et la section Crypto.
+    st.markdown('<div id="nav-positions" style="height:0; margin:0; padding:0;"></div>', unsafe_allow_html=True)
 
     def _perf_callout_html(row: pd.Series, is_best: bool) -> str:
         val_pct = float(row["gain_position_en_cours_%"])
         val_usd = float(row["gain_position_en_cours_$"])
         color = "#39ff8f" if val_pct >= 0 else "#ff4d4d"
         label = "Meilleure performance" if is_best else "Pire performance"
-        icon = "🏆" if is_best else "⚠️"
+        icon = "🏆 " if is_best else "⚠️ "
         return (
             f'<div style="display:flex; align-items:center; justify-content:space-between; '
             f'background:#050805; border:1px solid #1a2e22; border-left:2px solid {color}; '
             f'border-radius:0; padding:9px 14px; margin-bottom:10px;">'
-            f'<span style="font-size:0.78rem; color:{color};">{icon} {label} — {row["project"]}</span>'
-            f'<span style="font-size:0.85rem; font-weight:700; color:{color};">{val_pct:+.2f}% ({money(val_usd)})</span>'
+            f'<span style="font-size:0.78rem; color:#e8e8e8;">{icon} {label} — {row["project"]}</span>'
+            f'<span style="font-size:0.85rem; font-weight:700; color:#e8e8e8;">{val_pct:+.2f}% ({money(val_usd)})</span>'
             f'</div>'
         )
 
@@ -1365,21 +1601,26 @@ with tab_portefeuille:
     # (même logique que le graphique plus bas) pour qu'un token à quelques dollars
     # ne fausse pas le classement même si son évolution en % est extrême.
     perf_df = positions_live.dropna(subset=["gain_position_en_cours_$", "gain_position_en_cours_%"]).copy()
-    significant_perf_df, _ = split_significant_positions(perf_df, "gain_position_en_cours_$")
-    if not significant_perf_df.empty:
+    # Une position est dite "significative" selon sa valeur actuelle en portefeuille,
+    # pas selon l'amplitude de son gain/perte. Cela évite qu'une grosse position
+    # proche de son prix d'entrée soit classée à tort comme négligeable.
+    significant_perf_df, _ = split_significant_positions(perf_df, "value_live")
+
+    # UX : les callouts "Meilleure / Pire performance" ne sont utiles
+    # qu'à partir de 3 positions significatives. Avec 1 ou 2 positions,
+    # les cartes affichées juste dessous permettent déjà de voir immédiatement
+    # laquelle performe le mieux / le moins bien.
+    if len(significant_perf_df) >= 3:
         best_idx = significant_perf_df["gain_position_en_cours_%"].idxmax()
         worst_idx = significant_perf_df["gain_position_en_cours_%"].idxmin()
         best_row = significant_perf_df.loc[best_idx]
+        worst_row = significant_perf_df.loc[worst_idx]
 
-        if best_idx == worst_idx:
+        perf_col1, perf_col2 = st.columns(2)
+        with perf_col1:
             st.markdown(_perf_callout_html(best_row, is_best=True), unsafe_allow_html=True)
-        else:
-            worst_row = significant_perf_df.loc[worst_idx]
-            perf_col1, perf_col2 = st.columns(2)
-            with perf_col1:
-                st.markdown(_perf_callout_html(best_row, is_best=True), unsafe_allow_html=True)
-            with perf_col2:
-                st.markdown(_perf_callout_html(worst_row, is_best=False), unsafe_allow_html=True)
+        with perf_col2:
+            st.markdown(_perf_callout_html(worst_row, is_best=False), unsafe_allow_html=True)
 
     if positions_all.empty:
         st.info("Aucune position ouverte.")
@@ -1397,13 +1638,16 @@ with tab_portefeuille:
             "Valeur actuelle": ("value_live", False),
             "Alphabétique": ("project", True),
         }
-        sort_choice = st.selectbox(
-            "Trier par",
-            options=list(sort_options.keys()),
-            index=0,
-            key="positions_sort",
-        )
+
+        # Le sélecteur est affiché plus bas, sous "Petites positions".
+        # On lit ici sa valeur depuis session_state afin de pouvoir trier les cards
+        # avant leur rendu. Lorsqu'on change le selectbox, Streamlit relance le script
+        # et cette valeur est déjà disponible dès le début du rerun.
+        sort_choice = st.session_state.get("positions_sort", "Montant investi")
+        if sort_choice not in sort_options:
+            sort_choice = "Montant investi"
         sort_col, sort_ascending = sort_options[sort_choice]
+
         df_show = df_show.sort_values(
             by=sort_col,
             ascending=sort_ascending,
@@ -1416,14 +1660,20 @@ with tab_portefeuille:
         df_show["Montant total investi"] = df_show["montant_total_investi_value"].map(money)
         df_show["Valeur actuelle restante"] = df_show["value_live"].map(money)
         df_show["Gain sur position restante (en cours)"] = df_show["gain_position_en_cours_$"].map(pnl_color_html)
-        df_show["Profit global du trade (si vente now)"] = df_show["profit_global_trade_si_vente_now_$"].map(pnl_color_html)
+        # UX : le profit global n'apporte une information différente du gain en cours
+        # qu'après au moins une vente partielle sur le cycle ouvert.
+        df_show["Profit global du trade (si vente now)"] = df_show.apply(
+            lambda row: (
+                pnl_color_html(row["profit_global_trade_si_vente_now_$"])
+                if is_number(row.get("qty_sold")) and float(row.get("qty_sold", 0)) > 1e-12
+                else ""
+            ),
+            axis=1,
+        )
         df_show["ROI global du trade"] = df_show["roi_global_trade_si_vente_now_%"].map(pct_color_html)
 
         is_cash_row = df_show["project"].isin(list(cash_assets))
-        cash_badge_html = (
-            '<span style="color:#5a6f62;font-weight:700;'
-            'font-size:0.78rem;letter-spacing:0.03em;">CASH</span>'
-        )
+        cash_badge_html = ""
         df_show.loc[is_cash_row, ["Prix achat moyen", "Montant total investi", "Gain sur position restante (en cours)", "Profit global du trade (si vente now)"]] = ["—", "—", "—", "—"]
         df_show.loc[is_cash_row, "ROI global du trade"] = cash_badge_html
         df_show.loc[is_cash_row, "Valeur actuelle restante"] = df_show.loc[is_cash_row, "value_live"].map(money_rounded)
@@ -1459,7 +1709,10 @@ with tab_portefeuille:
 
         # Les petites positions (montant $ négligeable) passent en liste discrète
         # au lieu d'une tuile pleine — même logique que le graphique plus bas.
-        crypto_significant, crypto_small = split_significant_positions(crypto_show, "gain_position_en_cours_$")
+        # Une position crypto est considérée significative selon sa valeur actuelle,
+        # et non selon son P&L. Une position importante reste donc une vraie card
+        # même si son gain/perte actuel est faible.
+        crypto_significant, crypto_small = split_significant_positions(crypto_show, "value_live")
 
         if not crypto_significant.empty:
             st.markdown(
@@ -1498,29 +1751,48 @@ with tab_portefeuille:
                 unsafe_allow_html=True,
             )
 
+        # Contrôle de tri placé après le bloc des petites positions,
+        # juste avant la section Cash.
+        st.selectbox(
+            "Trier les positions en cours par",
+            options=list(sort_options.keys()),
+            index=list(sort_options.keys()).index(sort_choice),
+            key="positions_sort",
+        )
+
         if not cash_show.empty:
             st.markdown(
                 f'<div style="{section_label_style} margin:14px 0 8px 0;">Cash</div>',
                 unsafe_allow_html=True,
             )
+            # Pour le cash (RAKBANK / stablecoins), une seule information est utile :
+            # la valeur disponible. On évite quantité, prix d'achat, prix actuel, investi, PnL, etc.
+            cash_cards = []
+            for _, row in cash_show.iterrows():
+                cash_cards.append(
+                    '<div class="tile" style="min-height:88px;">'
+                    '<div class="tile-head" style="margin-bottom:10px;">'
+                    f'<div class="tile-title-wrap"><div class="tile-title">{row["project"]}</div></div>'
+                    ''
+                    '</div>'
+                    '<div class="tile-grid" style="grid-template-columns:1fr;">'
+                    '<div class="tile-field">'
+                    '<span class="tile-label">Valeur</span>'
+                    f'<span class="tile-value" style="font-size:0.95rem;font-weight:700;">{money_rounded(row["value_live"])}</span>'
+                    '</div>'
+                    '</div>'
+                    '</div>'
+                )
             st.markdown(
-                make_tiles(
-                    cash_show[cols].rename(columns={"project": "Projet"}),
-                    title_col="Projet",
-                    badge_col="ROI global du trade",
-                    label_overrides=positions_labels,
-                ),
+                f'<div class="tiles-grid">{"".join(cash_cards)}</div>',
                 unsafe_allow_html=True,
             )
 
-        st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
-        st.markdown('<div style="height: -5px;"></div>', unsafe_allow_html=True)
-
-        col1, col2 = st.columns(2, gap="large")
-
-        with col1:
+        # Répartition seule, centrée : le bloc "Gain sur position restante" faisait doublon
+        # avec les cartes de positions ci-dessus.
+        repart_left, repart_center, repart_right = st.columns([1, 2.4, 1], gap="large")
+        with repart_center:
             st.markdown('<div id="nav-repartition"></div>', unsafe_allow_html=True)
-            st.subheader("📊 Répartition")
             pie_df = positions_all.dropna(subset=["value_live"]).copy()
             if pie_df.empty:
                 st.info("Pas de données de valorisation.")
@@ -1569,6 +1841,7 @@ with tab_portefeuille:
                         textfont=dict(family="JetBrains Mono, monospace", size=10, color="#050805"),
                     )
                     fig.update_layout(
+                        height=330,
                         margin=dict(l=0, r=0, t=10, b=10),
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
@@ -1597,7 +1870,6 @@ with tab_portefeuille:
                         bar = "█" * filled + "░" * (BAR_WIDTH - filled)
                         bar_color = repartition_color_map.get(proj, "#5a6f62")
                         val_display = money_rounded(val) if proj in cash_assets else money(val)
-
                         alloc_rows.append(
                             '<div style="display:flex; align-items:center; gap:6px; padding:3px 0; '
                             'font-family:\'JetBrains Mono\', monospace; font-size:0.68rem;">'
@@ -1607,7 +1879,6 @@ with tab_portefeuille:
                             f'<span style="width:34px; text-align:right; color:var(--text-muted); flex-shrink:0;">{pct:4.1f}%</span>'
                             '</div>'
                         )
-
                     st.markdown(
                         '<div style="border:1px solid var(--border); border-radius:0; padding:10px 12px; height:100%;">'
                         + "".join(alloc_rows)
@@ -1615,68 +1886,87 @@ with tab_portefeuille:
                         unsafe_allow_html=True,
                     )
 
-        with col2:
-            st.subheader("📉 Gain sur position restante (en cours)")
-            bar_df = positions_live.copy()
-            bar_df = bar_df.dropna(subset=["gain_position_en_cours_$"])
+    # ---------------------------
+    # Simulateur "et si je vends à X%"
+    # Purement UX : ne touche jamais aux données réelles (CSV / positions).
+    # Recalcule juste, en direct, ce que donnerait un prix différent du prix live.
+    # ---------------------------
+    st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+    st.subheader("🧮 Simulateur — et si le prix bougeait ?")
 
-            if not bar_df.empty:
-                # Les montants qui comptent vraiment ressortent en graphique ;
-                # les positions dont le montant est négligeable (petites quantités,
-                # quelques dollars) passent en simple liste discrète, sans barre —
-                # ça ne sert à rien de leur donner de la place visuelle.
-                significant_df, small_df = split_significant_positions(bar_df, "gain_position_en_cours_$")
-                significant_df = significant_df.sort_values("gain_position_en_cours_$")
+    sim_candidates = positions_live.dropna(subset=["price_live", "qty_current"]).copy()
+    if sim_candidates.empty:
+        st.info("Aucune position pour simuler.")
+    else:
+        sim_col1, sim_col2 = st.columns([1, 2])
+        with sim_col1:
+            sim_token = st.selectbox(
+                "Position",
+                options=sim_candidates["project"].tolist(),
+                key="sim_token",
+            )
+        sim_row = sim_candidates[sim_candidates["project"] == sim_token].iloc[0]
+        with sim_col2:
+            sim_pct = st.slider(
+                "Variation de prix simulée",
+                min_value=-90,
+                max_value=300,
+                value=0,
+                step=1,
+                format="%d%%",
+                key="sim_pct",
+            )
 
-                if not significant_df.empty:
-                    gain_rows = []
-                    n_rows = len(significant_df)
-                    for i, (_, row) in enumerate(significant_df.iterrows()):
-                        val = float(row["gain_position_en_cours_$"])
-                        pct_val = row.get("gain_position_en_cours_%")
-                        color = "#ff4d4d" if val < 0 else "#39ff8f" if val > 0 else "#5a6f62"
-                        pct_display = f"{float(pct_val):+.1f}%" if pd.notna(pct_val) else "—"
-                        border_bottom = "border-bottom:1px solid var(--border-soft); " if i < n_rows - 1 else ""
-                        gain_rows.append(
-                            '<div style="display:flex; align-items:center; justify-content:space-between; '
-                            f'padding:8px 10px; border-left:2px solid {color}; {border_bottom}'
-                            'font-family:\'JetBrains Mono\', monospace;">'
-                            f'<span style="font-size:0.78rem; color:var(--text-primary);">{row["project"]}</span>'
-                            f'<span style="font-size:0.78rem; color:{color};">{money(val)}</span>'
-                            f'<span style="font-size:0.7rem; color:{color}; width:60px; text-align:right;">{pct_display}</span>'
-                            '</div>'
-                        )
-                    st.markdown(
-                        '<div style="border:1px solid var(--border); border-radius:0;">'
-                        + "".join(gain_rows)
-                        + "</div>",
-                        unsafe_allow_html=True,
-                    )
+        sim_price = float(sim_row["price_live"]) * (1 + sim_pct / 100)
+        sim_value = float(sim_row["qty_current"]) * sim_price
+        mise_restante = float(sim_row["mise_tokens_restants"]) if is_number(sim_row["mise_tokens_restants"]) else 0.0
+        sim_gain_en_cours = sim_value - mise_restante
+        sim_realized = float(sim_row["realized_pnl"]) if is_number(sim_row["realized_pnl"]) else 0.0
+        sim_profit_global = sim_realized + sim_gain_en_cours
+        sim_buy_cost = float(sim_row["buy_cost_gross"]) if is_number(sim_row["buy_cost_gross"]) else 0.0
+        sim_roi = (sim_profit_global / sim_buy_cost * 100) if sim_buy_cost > 0 else None
 
-                if not small_df.empty:
-                    small_df = small_df.sort_values("gain_position_en_cours_$", ascending=False)
-                    chips = []
-                    for _, row in small_df.iterrows():
-                        val = float(row["gain_position_en_cours_$"])
-                        fg = "#ff4d4d" if val < 0 else "#39ff8f" if val > 0 else "#9ca3af"
-                        chips.append(
-                            f'<span style="color: var(--text-muted);">{row["project"]} '
-                            f'<span style="color:{fg};">{money(val)}</span></span>'
-                        )
-                    st.markdown(
-                        f'<div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border-soft);">'
-                        f'<div style="font-size:0.66rem; text-transform:uppercase; letter-spacing:0.04em; '
-                        f'color:var(--text-muted); margin-bottom:6px;">Petites positions (montants négligeables)</div>'
-                        f'<div style="display:flex; flex-wrap:wrap; gap:6px 14px; font-size:0.78rem;">'
-                        f'{"".join(chips)}'
-                        f'</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-            else:
-                st.info("Gain sur position restante indisponible.")
+        st.markdown(
+            f"""
+            <div style="
+                background:#050805;
+                border:1px solid #1a2e22;
+                border-radius:0;
+                padding:16px 18px;
+                margin-top:10px;
+                max-width:640px;
+            ">
+                <div style="font-size:10.5px; letter-spacing:0.04em; text-transform:uppercase; color:#5a6f62; margin-bottom:12px;">
+                    Simulation — {sim_token} à {sim_pct:+d}% du prix actuel
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:12px 16px;">
+                    <div class="tile-field">
+                        <span class="tile-label">Prix simulé</span>
+                        <span class="tile-value" style="font-size:0.95rem;">{price(sim_price)}</span>
+                    </div>
+                    <div class="tile-field">
+                        <span class="tile-label">Valeur simulée</span>
+                        <span class="tile-value" style="font-size:0.95rem;">{money(sim_value)}</span>
+                    </div>
+                    <div class="tile-field">
+                        <span class="tile-label">Gain position (simulé)</span>
+                        <span class="tile-value" style="font-size:0.95rem;">{pnl_color_html(sim_gain_en_cours)}</span>
+                    </div>
+                    <div class="tile-field">
+                        <span class="tile-label">Profit global (simulé)</span>
+                        <span class="tile-value" style="font-size:0.95rem;">{pnl_color_html(sim_profit_global)}</span>
+                    </div>
+                    <div class="tile-field">
+                        <span class="tile-label">ROI global (simulé)</span>
+                        <span class="tile-value" style="font-size:0.95rem;">{pct_color_html(sim_roi) if sim_roi is not None else "—"}</span>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    st.markdown('<div style="height: 75px;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="height: 3px;"></div>', unsafe_allow_html=True)
 
     if show_transactions:
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
@@ -1776,9 +2066,9 @@ with tab_sales:
                 f'<div style="display:flex; align-items:center; justify-content:space-between; '
                 f'background:#050805; border:1px solid #1a2e22; border-left:2px solid #39ff8f; border-radius:0; padding:9px 14px; '
                 f'margin-bottom:16px; max-width:440px;">'
-                f'<span style="font-size:0.78rem; color:#39ff8f;">🏆 Meilleur trade — '
+                f'<span style="font-size:0.78rem; color:#e8e8e8;">🏆 Meilleur trade — '
                 f'{best_cycle["project"]} #{int(best_cycle["cycle_id"])}</span>'
-                f'<span style="font-size:0.85rem; font-weight:700; color:#39ff8f;">'
+                f'<span style="font-size:0.85rem; font-weight:700; color:#e8e8e8;">'
                 f'{money(float(best_cycle["realized_pnl"]))}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
@@ -2021,6 +2311,7 @@ with tab_sales:
             "Mise vendue": "Mise",
             "ROI sur ventes": "ROI",
         }
+
         st.markdown(
             make_tiles(
                 summary_token_html,
@@ -2085,6 +2376,7 @@ Un cycle = un trade complet sur un token.
             "Mise vendue": "Mise",
             "ROI sur ventes": "ROI",
         }
+
         st.markdown(
             make_tiles(
                 summary_cycle_html,
@@ -2141,6 +2433,7 @@ Un cycle = un trade complet sur un token.
             "Mise vendue": "Mise",
             "ROI sur ventes": "ROI",
         }
+
         st.markdown(
             make_tiles(
                 sales_html,
@@ -2150,5 +2443,82 @@ Un cycle = un trade complet sur un token.
                 label_overrides=sales_labels,
                 accent_values=sales_show["realized_pnl"],
             ),
+            unsafe_allow_html=True,
+        )
+
+
+# ---------------------------
+# TAB 3 — Watchlist
+# ---------------------------
+with tab_watchlist:
+    if watchlist_df.empty:
+        st.info("Watchlist vide. Ajoute des lignes dans watchlist.csv.")
+    else:
+        observation_values = [
+            value for value in watchlist_df["observation_du_moment"].astype(str).tolist()
+            if value.strip()
+        ]
+        observation = observation_values[0] if observation_values else ""
+
+        if observation:
+            st.markdown(
+                '<div class="watch-observation">'
+                '<div class="watch-observation-label">Observation du moment (update le 11/08/26)</div>'
+                f'<div class="watch-observation-text">{html.escape(observation)}</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        watch_cards = []
+        for _, row in watchlist_df.iterrows():
+            token = str(row["token"]).upper().strip()
+            live_price = fetch_project_live_price(token, vs_currency)
+            live_price_html = price(live_price) if is_number(live_price) else "—"
+
+            target = html.escape(str(row["target_achat"]).strip() or "À définir")
+            allocation = html.escape(str(row["mise_potentielle"]).strip() or "À définir")
+            description = html.escape(str(row["descriptif"]).strip() or "—")
+            token_html = html.escape(token)
+
+            source_url = DEXSCREENER_URL_BY_PROJECT.get(token, "")
+            source_html = (
+                f'<a class="watch-source" href="{html.escape(source_url, quote=True)}" '
+                f'target="_blank" rel="noopener noreferrer">DexScreener ↗</a>'
+                if source_url else ""
+            )
+
+            # HTML volontairement construit sans lignes vides / indentation Markdown :
+            # Streamlit peut sinon interpréter une partie de la card comme un bloc de code.
+            watch_cards.append(
+                '<div class="watch-card">'
+                '<div class="watch-card-head">'
+                '<div>'
+                f'<div class="watch-token">{token_html}</div>'
+                '</div>'
+                '<div>'
+                '<div class="watch-price-label">Prix live</div>'
+                f'<div class="watch-price">{live_price_html}</div>'
+                '</div>'
+                '</div>'
+                '<div class="watch-card-grid">'
+                '<div>'
+                '<div class="watch-field-label">Target achat</div>'
+                f'<div class="watch-field-value">{target}</div>'
+                '</div>'
+                '<div>'
+                '<div class="watch-field-label">Mise potentielle</div>'
+                f'<div class="watch-field-value">{allocation}</div>'
+                '</div>'
+                '<div class="watch-description">'
+                '<div class="watch-field-label">Thèse / descriptif</div>'
+                f'<div class="watch-field-value">{description}</div>'
+                f'{source_html}'
+                '</div>'
+                '</div>'
+                '</div>'
+            )
+
+        st.markdown(
+            f'<div class="watchlist-grid">{"".join(watch_cards)}</div>',
             unsafe_allow_html=True,
         )
