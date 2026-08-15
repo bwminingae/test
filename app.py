@@ -971,7 +971,9 @@ def load_watchlist(path: str) -> pd.DataFrame:
 # Core accounting logic
 # Weighted average cost basis
 # ---------------------------
-def build_portfolio_and_sales(transactions: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
+def build_portfolio_and_sales(
+    transactions: pd.DataFrame,
+) -> Tuple[pd.DataFrame, pd.DataFrame, List[str], pd.DataFrame]:
     """Build open positions and realized sales with trade-cycle awareness.
 
     Cycle rule:
@@ -983,6 +985,9 @@ def build_portfolio_and_sales(transactions: pd.DataFrame) -> Tuple[pd.DataFrame,
     Important:
     - Positions table uses ONLY the currently open cycle.
     - Ventes réalisées keeps ALL historical sales, with cycle_id available for summaries.
+    - Le 4e retour (closed_cycles) liste uniquement les cycles entièrement fermés
+      (achetés puis intégralement revendus), avec leur durée de détention en jours —
+      utilisé par le graphique "Temps de détention moyen".
     """
     position_columns = [
         "project",
@@ -1014,12 +1019,28 @@ def build_portfolio_and_sales(transactions: pd.DataFrame) -> Tuple[pd.DataFrame,
         "realized_pnl",
         "note",
     ]
+    closed_cycles_columns = [
+        "project",
+        "cycle_id",
+        "start_date",
+        "close_date",
+        "holding_days",
+        "buy_cost_gross",
+        "sell_proceeds_gross",
+        "realized_pnl",
+    ]
 
     if transactions.empty:
-        return pd.DataFrame(columns=position_columns), pd.DataFrame(columns=sales_columns), []
+        return (
+            pd.DataFrame(columns=position_columns),
+            pd.DataFrame(columns=sales_columns),
+            [],
+            pd.DataFrame(columns=closed_cycles_columns),
+        )
 
     positions_rows = []
     sales_rows = []
+    closed_cycles_rows = []
     warnings_list: List[str] = []
 
     for project, grp in transactions.groupby("project", sort=True):
@@ -1128,6 +1149,18 @@ def build_portfolio_and_sales(transactions: pd.DataFrame) -> Tuple[pd.DataFrame,
                 # SELL 100% => cycle closes. Next BUY starts a new cycle.
                 dust_value_usd = qty_held * px
                 if qty_held <= 1e-12 or dust_value_usd < 5:
+                    if cycle_start_date is not None:
+                        closed_cycles_rows.append({
+                            "project": project,
+                            "cycle_id": cycle_id,
+                            "start_date": cycle_start_date,
+                            "close_date": tx_date,
+                            "holding_days": (tx_date - cycle_start_date).days,
+                            "buy_cost_gross": buy_cost_gross,
+                            "sell_proceeds_gross": sell_proceeds_gross,
+                            "realized_pnl": realized_pnl_total,
+                        })
+
                     cycle_id += 1
                     cycle_start_date = None
                     qty_held = 0.0
@@ -1164,6 +1197,7 @@ def build_portfolio_and_sales(transactions: pd.DataFrame) -> Tuple[pd.DataFrame,
 
     positions = pd.DataFrame(positions_rows, columns=position_columns)
     sales = pd.DataFrame(sales_rows, columns=sales_columns)
+    closed_cycles = pd.DataFrame(closed_cycles_rows, columns=closed_cycles_columns)
 
     if not sales.empty:
         sales = sales.sort_values("date", ascending=False).reset_index(drop=True)
@@ -1171,7 +1205,10 @@ def build_portfolio_and_sales(transactions: pd.DataFrame) -> Tuple[pd.DataFrame,
     if not positions.empty:
         positions = positions.sort_values("project").reset_index(drop=True)
 
-    return positions, sales, warnings_list
+    if not closed_cycles.empty:
+        closed_cycles = closed_cycles.sort_values("close_date", ascending=False).reset_index(drop=True)
+
+    return positions, sales, warnings_list, closed_cycles
 
 
 def montant_investi_affichage(row: pd.Series, transactions: pd.DataFrame) -> float:
@@ -1248,7 +1285,7 @@ transactions = load_transactions(TRANSACTIONS_FILE)
 cash_df = load_cash(CASH_FILE)
 watchlist_df = load_watchlist(WATCHLIST_FILE)
 
-positions_raw, sales_df, data_warnings = build_portfolio_and_sales(transactions)
+positions_raw, sales_df, data_warnings, closed_cycles_df = build_portfolio_and_sales(transactions)
 
 for msg in data_warnings:
     st.warning(msg)
@@ -2243,6 +2280,181 @@ Un cycle = un trade complet sur un token.
             ),
             unsafe_allow_html=True,
         )
+
+        st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
+
+        # ---------------------------
+        # Temps de détention moyen — uniquement les cycles entièrement fermés
+        # (achetés puis intégralement revendus). Purement analytique, ne
+        # touche à aucun calcul de profit existant.
+        # ---------------------------
+        st.subheader("⏱ Temps de détention moyen")
+
+        if closed_cycles_df.empty:
+            st.info("Pas encore de cycle complètement fermé pour calculer une durée de détention.")
+        else:
+            hold_df = closed_cycles_df.copy()
+            hold_df["roi_pct"] = np.where(
+                hold_df["buy_cost_gross"] > 0,
+                (hold_df["realized_pnl"] / hold_df["buy_cost_gross"]) * 100,
+                np.nan,
+            )
+            hold_df = hold_df.dropna(subset=["holding_days", "roi_pct"])
+
+            if hold_df.empty:
+                st.info("Pas assez de données pour calculer une durée de détention.")
+            else:
+                avg_holding_days = float(hold_df["holding_days"].mean())
+
+                fast_trades = hold_df[hold_df["holding_days"] < 7]
+                slow_trades = hold_df[hold_df["holding_days"] >= 30]
+
+                fast_roi = float(fast_trades["roi_pct"].mean()) if not fast_trades.empty else None
+                slow_roi = float(slow_trades["roi_pct"].mean()) if not slow_trades.empty else None
+
+                hold_stat_col1, hold_stat_col2, hold_stat_col3 = st.columns(3)
+                with hold_stat_col1:
+                    st.markdown(
+                        f'<div style="background:#000; border:1px solid #1a2e22; border-radius:0; padding:14px 16px;">'
+                        f'<div style="font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:#5a6f62; margin-bottom:8px;">Durée moyenne</div>'
+                        f'<div style="font-size:22px; font-weight:700; color:#e8e8e8;">{avg_holding_days:.0f} jours</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                with hold_stat_col2:
+                    fast_display = pct_color_html(fast_roi) if fast_roi is not None else "—"
+                    st.markdown(
+                        f'<div style="background:#000; border:1px solid #1a2e22; border-radius:0; padding:14px 16px;">'
+                        f'<div style="font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:#5a6f62; margin-bottom:8px;">Trades rapides (&lt;7j) — ROI moyen</div>'
+                        f'<div style="font-size:22px; font-weight:700;">{fast_display}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                with hold_stat_col3:
+                    slow_display = pct_color_html(slow_roi) if slow_roi is not None else "—"
+                    st.markdown(
+                        f'<div style="background:#000; border:1px solid #1a2e22; border-radius:0; padding:14px 16px;">'
+                        f'<div style="font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:#5a6f62; margin-bottom:8px;">Trades longs (&ge;30j) — ROI moyen</div>'
+                        f'<div style="font-size:22px; font-weight:700;">{slow_display}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown('<div style="height: 12px;"></div>', unsafe_allow_html=True)
+
+                hold_df["label"] = hold_df["project"] + " #" + hold_df["cycle_id"].astype(int).astype(str)
+                hold_df["marker_color"] = np.where(hold_df["roi_pct"] >= 0, "#39ff8f", "#ff4d4d")
+                abs_profit = hold_df["realized_pnl"].abs()
+                max_abs_profit = float(abs_profit.max()) if abs_profit.max() > 0 else 1.0
+                hold_df["marker_size"] = 10 + (abs_profit / max_abs_profit) * 34
+
+                fig_hold = go.Figure()
+                fig_hold.add_trace(
+                    go.Scatter(
+                        x=hold_df["holding_days"],
+                        y=hold_df["roi_pct"],
+                        mode="markers",
+                        marker=dict(
+                            size=hold_df["marker_size"],
+                            color=hold_df["marker_color"],
+                            line=dict(width=1.5, color="#050805"),
+                            opacity=0.75,
+                        ),
+                        customdata=np.stack(
+                            [
+                                hold_df["label"],
+                                hold_df["holding_days"],
+                                hold_df["roi_pct"],
+                                hold_df["realized_pnl"],
+                            ],
+                            axis=-1,
+                        ),
+                        hovertemplate=(
+                            "<b>%{customdata[0]}</b><br>"
+                            "Détention : %{customdata[1]:.0f} jours<br>"
+                            "ROI : %{customdata[2]:+.1f}%<br>"
+                            "Profit : $%{customdata[3]:,.2f}"
+                            "<extra></extra>"
+                        ),
+                    )
+                )
+                fig_hold.add_hline(y=0, line_width=1, line_color="rgba(57,255,143,0.2)")
+                fig_hold.update_layout(
+                    height=340,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    showlegend=False,
+                    xaxis_title="Jours de détention",
+                    yaxis_title="ROI du cycle (%)",
+                    font=dict(color="#e8e8e8", family="JetBrains Mono, monospace"),
+                    hoverlabel=dict(bgcolor="#050805", bordercolor="#1a2e22", font_size=13),
+                )
+
+                # Zoom robuste : un cycle avec une durée ou un ROI très extrême
+                # (ex: 120 jours alors que la moyenne est de 26) étire sinon les
+                # axes et écrase visuellement tous les cycles "normaux" dans un
+                # coin du graphique. On calcule la fenêtre d'affichage à partir
+                # des bornes IQR (méthode statistique standard de détection
+                # d'outliers) au lieu du min/max brut, et on liste séparément
+                # les cycles qui tombent hors de cette fenêtre pour ne perdre
+                # aucune information.
+                def _iqr_display_range(series: pd.Series, pad_ratio: float = 0.15, floor_at_zero: bool = False):
+                    values = series.dropna()
+                    if len(values) < 4:
+                        lo, hi = float(values.min()), float(values.max())
+                    else:
+                        q1, q3 = float(values.quantile(0.25)), float(values.quantile(0.75))
+                        iqr = q3 - q1
+                        if iqr <= 0:
+                            lo, hi = float(values.min()), float(values.max())
+                        else:
+                            lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+                        lo = max(lo, float(values.min()))
+                        hi = min(hi, float(values.max()))
+                    span = max(hi - lo, 1.0)
+                    pad = span * pad_ratio
+                    lo, hi = lo - pad, hi + pad
+                    if floor_at_zero:
+                        lo = max(lo, 0.0)
+                    return lo, hi
+
+                x_lo, x_hi = _iqr_display_range(hold_df["holding_days"], floor_at_zero=True)
+                y_lo, y_hi = _iqr_display_range(hold_df["roi_pct"])
+
+                fig_hold.update_xaxes(
+                    gridcolor="rgba(57,255,143,0.08)",
+                    zerolinecolor="rgba(57,255,143,0.15)",
+                    range=[x_lo, x_hi],
+                )
+                fig_hold.update_yaxes(
+                    gridcolor="rgba(57,255,143,0.08)",
+                    zerolinecolor="rgba(57,255,143,0.15)",
+                    range=[y_lo, y_hi],
+                )
+                st.plotly_chart(fig_hold, use_container_width=True)
+
+                off_chart = hold_df[
+                    (hold_df["holding_days"] < x_lo)
+                    | (hold_df["holding_days"] > x_hi)
+                    | (hold_df["roi_pct"] < y_lo)
+                    | (hold_df["roi_pct"] > y_hi)
+                ]
+
+                caption_text = (
+                    "Chaque point = un cycle fermé (entièrement acheté puis entièrement vendu). "
+                    "Taille du point = importance du profit/perte en $."
+                )
+                if not off_chart.empty:
+                    off_chart_items = ", ".join(
+                        f'{row["label"]} ({row["holding_days"]:.0f}j, {row["roi_pct"]:+.0f}%)'
+                        for _, row in off_chart.iterrows()
+                    )
+                    caption_text += (
+                        f" · {len(off_chart)} cycle(s) hors champ (valeurs extrêmes, zoom recentré "
+                        f"sur le groupe principal) : {off_chart_items}."
+                    )
+                st.caption(caption_text)
 
         st.markdown('<div class="hr"></div>', unsafe_allow_html=True)
 
